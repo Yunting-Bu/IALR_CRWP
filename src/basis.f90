@@ -144,9 +144,10 @@ contains
         call sinDVRGrid(IALR%nZ_IALR, IALR%Z_range(1), IALR%Z_range(2), Z_IALR)
 
 !> r in PODVR : |r_p>
-        allocate(r_Int(IALR%vint), r_Asy(IALR%vasy), r_LR(1))
-        allocate(int_POWF(IALR%vint,IALR%vint), asy_POWF(IALR%vasy,IALR%vasy))
-        allocate(int_PO2FBR(IALR%vint,IALR%vint), asy_PO2FBR(IALR%vasy,IALR%vasy))
+        IALR%vlr = initWP%v0+1
+        allocate(r_Int(IALR%vint), r_Asy(IALR%vasy), r_LR(IALR%vlr))
+        allocate(int_POWF(IALR%vint,IALR%vint), asy_POWF(IALR%vasy,IALR%vasy), lr_POWF(IALR%vlr, IALR%vlr))
+        allocate(int_PO2FBR(IALR%vint,IALR%vint), asy_PO2FBR(IALR%vasy,IALR%vasy), lr_PO2FBR(IALR%vlr, IALR%vlr))
         allocate(int_POEig(IALR%vint))
         call sinDVRGrid(IALR%nr_DVR, IALR%r_range(1), IALR%r_range(2),DVRGrid)
         range = IALR%r_range(2) - IALR%r_range(1)
@@ -156,10 +157,8 @@ contains
         end do 
         call DVR_vib(IALR%nr_DVR,massBC,range,VBC,DVREig,DVRWF)
 !> long range region
-        call PODVR(1,IALR%nr_DVR,DVRWF,DVRGrid,DVREig,r_LR,int_POEig,asy_POWF,asy_PO2FBR)
+        call PODVR(IALR%vlr,IALR%nr_DVR,DVRWF,DVRGrid,DVREig,r_LR,int_POEig,lr_POWF,lr_PO2FBR)
 !> asymptotic region
-        asy_POWF = 0.0_f8
-        asy_PO2FBR = 0.0_f8
         call PODVR(IALR%vasy,IALR%nr_DVR,DVRWF,DVRGrid,DVREig,r_Asy,int_POEig,asy_POWF,asy_PO2FBR)
 !> interaction region
         int_POEig = 0.0_f8
@@ -167,7 +166,9 @@ contains
 
         write(outFileUnit,'(1x,a)') '=====> Initail ro-vibrational state information <====='
         write(outFileUnit,'(1x,a)') ''
+        write(outFileUnit,'(1x,a,f15.9,a,f15.9,a)') 'lr-PODVR grids range: [', r_LR(1), ', ', r_LR(IALR%vlr), '  ] a.u.'
         write(outFileUnit,'(1x,a,f15.9,a,f15.9,a)') 'asy-PODVR grids range: [', r_Asy(1), ', ', r_Asy(IALR%vasy), '  ] a.u.'
+        write(outFileUnit,'(1x,a,f15.9,a,f15.9,a)') 'int-PODVR grids range: [', r_Int(1), ', ', r_Int(IALR%vint), '  ] a.u.'
         write(outFileUnit,'(1x,a)') "Please ensure that the PODVR grid covers the relevant region of the BC potential!"
         write(outFileUnit,*) ''
 
@@ -231,6 +232,7 @@ contains
         write(outFileUnit,'(1x,a,i6)') 'Number of Z grid points : ', IALR%nZ_IALR
         write(outFileUnit,'(1x,a,i6)') 'Number of r PODVR points in interaction region : ', IALR%vint
         write(outFileUnit,'(1x,a,i6)') 'Number of r PODVR points in asymptotic region : ', IALR%vasy
+        write(outFileUnit,'(1x,a,i6)') 'Number of r PODVR points in long range region : ', IALR%vlr
         write(outFileUnit,'(1x,a,i6)') 'Number of (j, K) pairs in interaction region : ', int_njK
         write(outFileUnit,'(1x,a,i6)') 'Number of (j, K) pairs in asymptotic region : ', asy_njK
         write(outFileUnit,'(1x,a,i6)') 'Number of (j, K) pairs in long range region : ', lr_njK

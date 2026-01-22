@@ -28,7 +28,7 @@ contains
     subroutine setInitTotWP()
         implicit none
         real(f8) :: normWPTot, normWPZ
-        integer :: iZ, iPES, j
+        integer :: iZ, iPES, j, ir
         integer :: Kmax, K, ijKl, ijKa, ijKi
         real(f8) :: delta, CGtmp, fact
         real(f8), external :: CG 
@@ -43,8 +43,8 @@ contains
                 int_TDWPm(IALR%nZ_I,IALR%vint,int_njK,nPES))
         allocate(asy_TDWP(IALR%nZ_IA,IALR%vasy,asy_njK,nPES), &
                 asy_TDWPm(IALR%nZ_IA,IALR%vasy,asy_njK,nPES))
-        allocate(lr_TDWP(IALR%nZ_IALR,lr_njK), &
-                lr_TDWPm(IALR%nZ_IALR,lr_njK))
+        allocate(lr_TDWP(IALR%nZ_IALR,IALR%vlr,lr_njK,1), &
+                lr_TDWPm(IALR%nZ_IALR,IALR%vlr,lr_njK,1))
 
 !> SF to BF transMat
 !> BLK = sqrt(2-delta_K0)*sqrt((2L+1)/(2J+1))*<j,K,L,0|J,K>
@@ -67,8 +67,10 @@ contains
                     write(outFileUnit,*) 'POSITION: initWP.f90, subroutine getInitTotWP()'
                 end if
                 do iZ = 1, IALR%nZ_IALR
-                    lr_TDWP(iZ,ijKl) = initWP_BLK(K) * initGaussWP(iZ)
-                    normWPTot = normWPTot + dabs(lr_TDWP(iZ,ijKl))**2
+                    lr_TDWP(iZ,:,ijKl,1) = initWP_BLK(K) * initGaussWP(iZ)
+                    do ir = 1, IALR%vlr
+                        normWPTot = normWPTot + dabs(lr_TDWP(iZ,ir,ijKl,1))**2
+                    end do
                 end do
             end if
         end do
@@ -84,7 +86,7 @@ contains
                         write(outFileUnit,*) 'Error in find ijK for initial WP construction in asy'
                         write(outFileUnit,*) 'POSITION: initWP.f90, subroutine getInitTotWP()'
                     end if
-                    asy_TDWP(:,initWP%v0+1,ijKa,iPES) = lr_TDWP(1:IALR%nZ_IA,ijKl)
+                    asy_TDWP(:,1:IALR%vlr,ijKa,iPES) = lr_TDWP(1:IALR%nZ_IA,1:IALR%vlr,ijKl,1)
                 end if
             end do
         end do 
@@ -101,7 +103,7 @@ contains
                             write(outFileUnit,*) 'Error in find ijK for initial WP construction in int'
                             write(outFileUnit,*) 'POSITION: initWP.f90, subroutine getInitTotWP()'
                         end if
-                        int_TDWP(:,1:IALR%vasy,ijKi,iPES) = asy_TDWP(1:IALR%nZ_I,:,ijKa,iPES)
+                        int_TDWP(:,1:IALR%vasy,ijKi,iPES) = asy_TDWP(1:IALR%nZ_I,1:IALR%vasy,ijKa,iPES)
                     end if
                 end do
             end do
@@ -190,6 +192,7 @@ contains
 !> Combine kinMat_r and kinMat_Z 
         allocate(int_kinEigen(IALR%nZ_I,IALR%vint))
         allocate(asy_kinEigen(IALR%nZ_IA,IALR%vasy))
+        allocate(lr_kinEigen(IALR%nZ_IALR,IALR%vlr))
 
         !> interaction region
         Zfact = 0.5_f8/(IALR%nZ_I+1.0_f8)
@@ -208,10 +211,11 @@ contains
         end do
 
         !> long-range region
-        allocate(lr_kinEigen(IALR%nZ_IALR))
         Zfact = 0.5_f8/(IALR%nZ_IALR+1.0_f8)
-        do i = 1, IALR%nZ_IALR
-            lr_kinEigen(i) = (lr_rKinMat + lr_ZkinMat(i))*Zfact
+        do j = 1, IALR%vlr
+            do i = 1, IALR%nZ_IALR
+                lr_kinEigen(i,j) = (lr_rKinMat(j) + lr_ZkinMat(i))*Zfact
+            end do
         end do
     end subroutine initDFFT
 !> ------------------------------------------------------------------------------------------------------------------ <!

@@ -27,6 +27,7 @@ module m_MachinaBasic
 
     interface BinReadWrite
         module procedure realBinReadWrite1D
+        module procedure realBinReadWrite2D
         module procedure realBinReadWrite4D
         module procedure realBinReadWrite5D
     end interface BinReadWrite
@@ -56,6 +57,31 @@ contains
 
     end subroutine realBinReadWrite1D
 !> ------------------------------------------------------------------------------------------------------------------ <!
+
+!> ------------------------------------------------------------------------------------------------------------------ <!
+    subroutine realBinReadWrite2D(file, data, action)
+        implicit none
+        
+        character(len=*), intent(in) :: file
+        character(len=*), intent(in) :: action
+        real(f8), intent(inout) :: data(:,:)
+        integer :: streamUnit
+
+        if (action == 'read') then
+            open(unit=streamUnit, file=trim(file), access='stream', form='unformatted', status='old')
+            read(streamUnit) data
+            close(streamUnit)
+        else if (action == 'write') then
+            open(unit=streamUnit, file=trim(file), access='stream', form='unformatted', status='replace')
+            write(streamUnit) data
+            close(streamUnit)
+        else
+            write(*,*) 'Error: action must be either "read" or "write".'
+        end if  
+
+    end subroutine realBinReadWrite2D
+!> ------------------------------------------------------------------------------------------------------------------ <!
+
 !> ------------------------------------------------------------------------------------------------------------------ <!
     subroutine realBinReadWrite4D(file, data, action)
         implicit none

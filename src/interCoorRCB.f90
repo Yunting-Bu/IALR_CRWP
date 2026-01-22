@@ -8,8 +8,6 @@ module m_InterCoorRCB
 !> Mass constants in RCB, beta = C+AB and gamma = B+AC
     real(f8), private :: A_beta, B_beta
     real(f8), private :: A_gamma, B_gamma
-!> Intermidiate coordinates rij/Zij and gij
-    real(f8), allocatable, private :: interCoor_AB(:,:,:), interCoor_AC(:,:,:)
 !> DVR grids
     real(f8), allocatable, private :: rp1(:), rp2(:)
 !> DVR to FBR transformation matrices
@@ -19,10 +17,14 @@ module m_InterCoorRCB
 !> Product diatomic vib-rot energy and wavefunction in product coordinates
     real(f8), allocatable, private :: Evj_AB(:,:,:), Evj_AC(:,:,:)
     real(f8), allocatable, private :: WFvj_AB(:,:,:,:), WFvj_AC(:,:,:,:)
+!> Boundary of RCB coordinates
+    real(f8), private :: RCB_ABZ_range(2), RCB_ABr_range(2) 
+    real(f8), private :: RCB_ACZ_range(2), RCB_ACr_range(2) 
 
     public
     private :: findjMax, DVR_VibRotp
-    private :: setUij, interCoorWFvj
+    private :: setUij, interCoorWFvj, setAtDMat
+    private :: setNumberInterCoor, setTransKMat
     private :: RCB_rmid, RCB_Zmid
     private :: rJacobiFactor, ZJacobiFactor
 
@@ -36,43 +38,45 @@ contains
         integer :: ir, vmax, jmax, Kmax, ijK, j, K
         character(len=10) :: type 
 
-        !> Channel 1
+!> Channel 1
         type = 'A+BC->C+AB'
-        !> Set Uij
-        call setUij(type,channel1%ichoice,atomMass,channel1%Zinf,interCoor_AB,Uij_AB)
+!> Set number of intermediate coordinates
+        call setNumberInterCoor(type, channel1%ichoice, channel1%Zinf, channel1%r_range, atomMass, channel1%nIC, interCoor_AB, idXY_AB)
+!> Set Uij
+        call setUij(channel1%ichoice, channel1%nIC, interCoor_AB, idXY_AB, Uij_AB)
         channel1%massAB = atomMass(1)*atomMass(2)/(atomMass(1)+atomMass(2))
         channel1%massTot = atomMass(3)*(atomMass(2)+atomMass(1))/(atomMass(1)+atomMass(2)+atomMass(3))
-        !> Set DVR grids
+!> Set DVR grids
         allocate(rp1(channel1%nr))
         call sinDVRGrid(channel1%nr, channel1%r_range(1), channel1%r_range(2), rp1)
-        !> Set transformation matrix from DVR to FBR
+!> Set transformation matrix from DVR to FBR
         allocate(DVR2FBR1(channel1%nr,channel1%nr))
         call setDVR2FBR(channel1%nr, DVR2FBR1)
-        !> Set diatomic potential
+!> Set diatomic potential
         allocate(VAB(channel1%nr,nPES))
         do ir = 1, channel1%nr
             call setPot_Product(type, rp1(ir), Vadia)
             VAB(ir,:) = Vadia
         end do
-        !> Find vmax for channel 1
+!> Find vmax for channel 1
         call findvMax(channel1%massAB, channel1%nr, rp1, VAB, vmax)
         if (channel1%vmax < vmax) then
             write(outFileUnit,'(1x,a,i4,i4)') 'Warning: channel 1 vmax increased from ', &
                                             channel1%vmax, ' to ', vmax
             channel1%vmax = vmax
         end if
-        !> Find jmax for channel 1
+!> Find jmax for channel 1
         call findjMax(channel1%massAB, channel1%nr, rp1, VAB, channel1%jmin, channel1%jinc, jmax)
         if (channel1%jmax < jmax) then
             write(outFileUnit,'(1x,a,i4,i4)') 'Warning: channel 1 jmax increased from ', &
                                             channel1%jmax, ' to ', jmax
             channel1%jmax = jmax
         end if
-        !> AB vib-rot energy and wavefunction
+!> AB vib-rot energy and wavefunction
         allocate(Evj_AB(0:channel1%vmax,channel1%jmin:channel1%jmax,nPES))
         allocate(WFvj_AB(channel1%nr,0:channel1%vmax,channel1%jmin:channel1%jmax,nPES))
         call DVR_VibRotp(type)
-        !> Set jK pair
+!> Set jK pair
         channel1%Kmin = merge(0, 1, initWP%tpar == 1)
         call setjKPair(channel1%jmin, channel1%jmax, channel1%jinc, channel1%Kmin, channel1%njK, AB_jKPair)
         Kmax = min(channel1%jmax, initWP%Jtot)
@@ -83,47 +87,53 @@ contains
             K = AB_jKPair(ijK,2)
             AB_seqjK(j,K) = ijK
         end do
-        !> WF_AB in intermediate coordinates
+!> WF_AB in intermediate coordinates
         call interCoorWFvj(type, channel1%ichoice)
+!> Transformation matrix from Ka to Kb
+        call setTransKMat(type)
+!> AtD matrix for channel 1
+        call setAtDMat(channel1%nIC,channel1%ichoice,atomMass(1),atomMass(2),InterCoor_AB,AtDMat_AB)
 
         if (nChannel == 2) then
-            !> Channel 2
+!> Channel 2
             type = 'A+BC->B+AC'
-            !> Set Uij
-            call setUij(type,channel2%ichoice,atomMass,channel2%Zinf,interCoor_AC,Uij_AC)
+!> Set number of intermediate coordinates
+            call setNumberInterCoor(type,channel2%ichoice,channel2%Zinf,channel2%r_range,atomMass,channel2%nIC, interCoor_AC, idXY_AC)
+!> Set Uij
+            call setUij(channel2%ichoice, channel2%nIC, interCoor_AC, idXY_AC, Uij_AC)
             channel2%massAC = atomMass(1)*atomMass(3)/(atomMass(1)+atomMass(3))
             channel2%massTot = atomMass(2)*(atomMass(3)+atomMass(1))/(atomMass(1)+atomMass(2)+atomMass(3))
-            !> Set DVR grids
+!> Set DVR grids
             allocate(rp2(channel2%nr))
             call sinDVRGrid(channel2%nr, channel2%r_range(1), channel2%r_range(2), rp2)
-            !> Set transformation matrix from DVR to FBR
+!> Set transformation matrix from DVR to FBR
             allocate(DVR2FBR2(channel2%nr,channel2%nr))
             call setDVR2FBR(channel2%nr, DVR2FBR2)
-            !> Set diatomic potential
+!> Set diatomic potential
             allocate(VAC(channel2%nr,nPES))
             do ir = 1, channel2%nr
                 call setPot_Product(type, rp2(ir), Vadia)
                 VAC(ir,:) = Vadia
             end do
-            !> Find vmax for channel 2
+!> Find vmax for channel 2
             call findvMax(channel2%massAC, channel2%nr, rp2, VAC, vmax)
             if (channel2%vmax < vmax) then
                 write(outFileUnit,'(1x,a,i4,i4)') 'Warning: channel 2 vmax increased from ', &
                                                 channel2%vmax, ' to ', vmax
                 channel2%vmax = vmax
             end if
-            !> Find jmax for channel 2
+!> Find jmax for channel 2
             call findjMax(channel2%massAC, channel2%nr, rp2, VAC, channel2%jmin, channel2%jinc, jmax)
             if (channel2%jmax < jmax) then
                 write(outFileUnit,'(1x,a,i4,i4)') 'Warning: channel 2 jmax increased from ', &
                                                 channel2%jmax, ' to ', jmax
                 channel2%jmax = jmax
             end if 
-            !> AC vib-rot energy and wavefunction
+!> AC vib-rot energy and wavefunction
             allocate(Evj_AC(0:channel2%vmax,channel2%jmin:channel2%jmax,nPES))
             allocate(WFvj_AC(channel2%nr,0:channel2%vmax,channel2%jmin:channel2%jmax,nPES))
             call DVR_VibRotp(type)
-            !> Set jK pair
+!> Set jK pair
             channel2%Kmin = merge(0, 1, initWP%tpar == 1)
             call setjKPair(channel2%jmin, channel2%jmax, channel2%jinc, channel2%Kmin, channel2%njK, AC_jKPair)
             Kmax = min(channel2%jmax, initWP%Jtot)
@@ -134,8 +144,12 @@ contains
                 K = AC_jKPair(ijK,2)
                 AC_seqjK(j,K) = ijK
             end do
-            !> WF_AC in intermediate coordinates
+!> WF_AC in intermediate coordinates
             call interCoorWFvj(type, channel2%ichoice)
+!> Transformation matrix from Ka to Kb
+            call setTransKMat(type)
+!> AtD matrix for channel 2
+            call setAtDMat(channel2%nIC,channel2%ichoice,atomMass(1),atomMass(3),InterCoor_AC,AtDMat_AC)
         end if
 
         write(outFileUnit,'(1x,a)') '=====> Intermediate coordinate RCB information <====='
@@ -155,7 +169,10 @@ contains
             write(outFileUnit,'(1x,a)') 'Please check the energy!'
             write(outFileUnit,'(1x,a,i4)') 'Number of jK pairs in channel 1: ', channel1%njK
             write(outFileUnit,'(1x,a,i2)') 'ichoice = ', channel1%ichoice
+            write(outFileUnit,'(1x,a,i4)') 'Number of intermediate coordinates in channel 1: ', channel1%nIC
             write(outFileUnit,'(1x,a)') 'Please check InterCoorWF_AB.chk for the wavefunction normalization!'
+            write(outFileUnit,'(1x,a,f15.9,a,f15.9)') 'Zmin: ', RCB_ABZ_range(1), ' Zmax: ', RCB_ABZ_range(2)
+            write(outFileUnit,'(1x,a,f15.9,a,f15.9)') 'Rmin: ', RCB_ABr_range(1), ' Rmax: ', RCB_ABr_range(2)
             write(outFileUnit,'(1x,a)') ''
             if (nChannel == 2) then
                 write(outFileUnit,'(1x,a)') 'Product channel 2 : A + BC -> B + AC :'
@@ -167,7 +184,10 @@ contains
                 write(outFileUnit,'(1x,a)') 'Please check the energy!'
                 write(outFileUnit,'(1x,a,i4)') 'Number of jK pairs in channel 2: ', channel2%njK
                 write(outFileUnit,'(1x,a,i2)') 'ichoice = ', channel2%ichoice
+                write(outFileUnit,'(1x,a,i4)') 'Number of intermediate coordinates in channel 2: ', channel2%nIC
                 write(outFileUnit,'(1x,a)') 'Please check InterCoorWF_AC.chk for the wavefunction normalization!'
+                write(outFileUnit,'(1x,a,f15.9,a,f15.9)') 'Zmin: ', RCB_ACZ_range(1), ' Zmax: ', RCB_ACZ_range(2)
+                write(outFileUnit,'(1x,a,f15.9,a,f15.9)') 'Rmin: ', RCB_ACr_range(1), ' Rmax: ', RCB_ACr_range(2)
                 write(outFileUnit,'(1x,a)') ''
             end if
         end if
@@ -265,8 +285,7 @@ contains
             allocate(DVREig(channel1%nr))
             allocate(DVRWF(channel1%nr,channel1%nr))
             allocate(Vpot(channel1%nr))
-                ! Ensure accumulators are zeroed before +=
-                WFvj_AB = 0.0_f8
+            WFvj_AB = 0.0_f8
             do iPES = 1, nPES
                 do j = channel1%jmin, channel1%jmax, channel1%jinc
                     do ir = 1, channel1%nr 
@@ -292,8 +311,7 @@ contains
             allocate(DVREig(channel2%nr))
             allocate(DVRWF(channel2%nr,channel2%nr))
             allocate(Vpot(channel2%nr))
-                ! Ensure accumulators are zeroed before +=
-                WFvj_AC = 0.0_f8
+            WFvj_AC = 0.0_f8
             do iPES = 1, nPES
                 do j = channel2%jmin, channel2%jmax, channel2%jinc
                     do ir = 1, channel2%nr 
@@ -324,14 +342,14 @@ contains
         character(len=*), intent(in) :: type
         integer, intent(in) :: ichoice
         real(f8) :: gij, djFact, tmp, rp, norm, dpos, tmpW
-        real(f8) :: Jacobi_AB(3), Jacobi_AC(3), Jacobi_BC(3)
         real(f8), allocatable :: pos(:)
         real(f8), external :: spgndr
-        integer :: iPos, nPos, ith, v, j, iPES, iDVR, ijK, K
-        integer :: normUnit
+        integer :: iPos, nPos, ith, v, j, iPES, iDVR, ijK, K, iIC
+        integer :: normUnit, Kmax
         character(len=20) :: fileName 
 
         djFact = merge(0.5_f8, 1.0_f8, initWP%jinc==2)
+        Kmax = min(IALR%jint, initWP%Jtot)
 
         if (ichoice == 1) then 
             nPos = IALR%nZ_I
@@ -350,43 +368,46 @@ contains
         end if
 
         if (type == 'A+BC->C+AB') then 
-            allocate(ICWFvj_AB(nPos,IALR%int_nA,0:channel1%vmax,channel1%njK,nPES))
+            RCB_ABZ_range(1) = 100.0_f8; RCB_ABZ_range(2) = 0.0_f8
+            RCB_ABr_range(1) = 100.0_f8; RCB_ABr_range(2) = 0.0_f8
+            allocate(ICWFvj_AB(channel1%nIC,0:channel1%vmax,channel1%njK,nPES))
+            allocate(intAB_TIDWF(channel1%nIC,initWP%Kmin:Kmax,nPES,nEtot))
+            intAB_TIDWF = imgZero
             ICWFvj_AB = 0.0_f8
             do iPES = 1, nPES 
-                do ith = 1, IALR%int_nA
-                    ! For AB channel, use cos(pi - theta) = -cos(theta)
-                    Jacobi_BC(3) = int_ANode(ith) 
-                    do iPos = 1, nPos
-                        if (ichoice == 1) then 
-                            Jacobi_BC(1) = interCoor_AB(iPos,ith,1)
-                            Jacobi_BC(2) = pos(iPos)
-                        else if (ichoice == 2) then
-                            Jacobi_BC(1) = pos(iPos)
-                            Jacobi_BC(2) = interCoor_AB(iPos,ith,1)
-                        end if
-                        if (Jacobi_BC(1) > 0.0_f8 .and. Jacobi_BC(2) > 0.0_f8) then 
-                            call Jacobi_R2P(type, atomMass, Jacobi_BC, Jacobi_AB)
-                            rp = Jacobi_AB(1)
-                            write(9876,*) rp
-                            if (rp < channel1%r_range(1) .or. rp > channel1%r_range(2)) cycle
-                            gij = interCoor_AB(iPos,ith,2)/channel1%Zinf/rp*pos(iPos)*interCoor_AB(iPos,ith,1)
-                            tmpW = gij*dsqrt(int_AWeight(ith)*djFact)*dsqrt(dpos)*dsqrt(2.0_f8/(channel1%r_range(2)-channel1%r_range(1)))
-                            do ijK = 1, channel1%njK
-                                j = AB_jKPair(ijK,1)
-                                K = AB_jKPair(ijK,2)
-                                do v = 0, channel1%vmax
-                                    tmp = 0.0_f8
-                                    do iDVR = 1, channel1%nr 
-                                        tmp = tmp + WFvj_AB(iDVR,v,j,iPES) &
-                                            * dsin(iDVR*pi*(rp-channel1%r_range(1))/(channel1%r_range(2)-channel1%r_range(1)))
-                                    end do
-                                    ICWFvj_AB(iPos,ith,v,ijK,iPES) = tmpW*tmp*spgndr(j,K,Jacobi_AB(3))
-                                end do
+                do iIC = 1, channel1%nIC
+                    iPos = idXY_AB(iIC,1)
+                    ith = idXY_AB(iIC,2)
+                    rp = interCoor_AB(iIC,4)
+                    gij = interCoor_AB(iIC,7)/channel1%Zinf/rp*pos(iPos)*interCoor_AB(iIC,2)
+                    tmpW = gij*dsqrt(int_AWeight(ith)*djFact)*dsqrt(dpos)*dsqrt(2.0_f8/(channel1%r_range(2)-channel1%r_range(1)))
+                    do ijK = 1, channel1%njK
+                        j = AB_jKPair(ijK,1)
+                        K = AB_jKPair(ijK,2)
+                        do v = 0, channel1%vmax
+                            tmp = 0.0_f8
+                            do iDVR = 1, channel1%nr 
+                                tmp = tmp + WFvj_AB(iDVR,v,j,iPES) &
+                                    * dsin(iDVR*pi*(rp-channel1%r_range(1))/(channel1%r_range(2)-channel1%r_range(1)))
                             end do
-                        end if 
+                            if (abs(tmp) > 0.01_f8) then 
+                                if (ichoice == 1) then 
+                                    RCB_ABZ_range(1) = min(RCB_ABZ_range(1), pos(iPos))
+                                    RCB_ABZ_range(2) = max(RCB_ABZ_range(2), pos(iPos))
+                                    RCB_ABr_range(1) = min(RCB_ABr_range(1), interCoor_AB(iIC,2))
+                                    RCB_ABr_range(2) = max(RCB_ABr_range(2), interCoor_AB(iIC,2))
+                                else if (ichoice == 2) then
+                                    RCB_ABZ_range(1) = min(RCB_ABZ_range(1), interCoor_AB(iIC,2))
+                                    RCB_ABZ_range(2) = max(RCB_ABZ_range(2), interCoor_AB(iIC,2))
+                                    RCB_ABr_range(1) = min(RCB_ABr_range(1), pos(iPos))
+                                    RCB_ABr_range(2) = max(RCB_ABr_range(2), pos(iPos))
+                                end if
+                            end if
+                            ICWFvj_AB(iIC,v,ijK,iPES) = tmpW*tmp*spgndr(j,K,interCoor_AB(iIC,5))
+                        end do
                     end do
-                end do
-            end do
+                end do 
+            end do 
             !> Normal check
             fileName = 'InterCoorWF_AB.chk'
             open(unit=normUnit, file=fileName, status='replace', action='write')
@@ -397,10 +418,8 @@ contains
                     K = AB_jKPair(ijK,2)
                     do v = 0, channel1%vmax
                         norm = 0.0_f8
-                        do ith = 1, IALR%int_nA
-                            do iPos = 1, nPos
-                                norm = norm + ICWFvj_AB(iPos,ith,v,ijK,iPES)**2
-                            end do
+                        do iIC = 1, channel1%nIC
+                            norm = norm + ICWFvj_AB(iIC,v,ijK,iPES)**2
                         end do
                         write(normUnit,'(1x,i4,1x,i4,1x,i4,1x,i4,1x,f15.9,1x,f15.9)') iPES, v, j, K, Evj_AB(v,j,iPES)*au2ev,norm
                     end do
@@ -408,39 +427,43 @@ contains
             end do
             close(normUnit)
         else if (type == 'A+BC->B+AC') then
-            allocate(ICWFvj_AC(nPos,IALR%int_nA,0:channel2%vmax,channel2%njK,nPES))
+            RCB_ACZ_range(1) = 100.0_f8; RCB_ACZ_range(2) = 0.0_f8
+            RCB_ACr_range(1) = 100.0_f8; RCB_ACr_range(2) = 0.0_f8
+            allocate(ICWFvj_AC(channel2%nIC,0:channel2%vmax,channel2%njK,nPES))
+            allocate(intAC_TIDWF(channel2%nIC,initWP%Kmin:Kmax,nPES,nEtot))
+            intAC_TIDWF = imgZero
             ICWFvj_AC = 0.0_f8
             do iPES = 1, nPES 
-                do ith = 1, IALR%int_nA
-                    Jacobi_BC(3) = int_ANode(ith) 
-                    do iPos = 1, nPos
-                        if (ichoice == 1) then 
-                            Jacobi_BC(1) = interCoor_AC(iPos,ith,1)
-                            Jacobi_BC(2) = pos(iPos)
-                        else if (ichoice == 2) then
-                            Jacobi_BC(1) = pos(iPos)
-                            Jacobi_BC(2) = interCoor_AC(iPos,ith,1)
-                        end if
-                        if (Jacobi_BC(1) > 0.0_f8 .and. Jacobi_BC(2) > 0.0_f8) then
-                            call Jacobi_R2P(type, atomMass, Jacobi_BC, Jacobi_AC)
-                            rp = Jacobi_AC(1)
-                            if (rp < channel2%r_range(1) .or. rp > channel2%r_range(2)) cycle
-                            gij = interCoor_AC(iPos,ith,2)/channel2%Zinf/rp*pos(iPos)*interCoor_AC(iPos,ith,1)
-                            write(9876,*) interCoor_AC(iPos,ith,1)
-                            tmpW = gij*dsqrt(int_AWeight(ith)*djFact)*dsqrt(dpos)*dsqrt(2.0_f8/(channel2%r_range(2)-channel2%r_range(1)))
-                            do ijK = 1, channel2%njK
-                                j = AC_jKPair(ijK,1)
-                                K = AC_jKPair(ijK,2)
-                                do v = 0, channel2%vmax
-                                    tmp = 0.0_f8
-                                    do iDVR = 1, channel2%nr 
-                                        tmp = tmp + WFvj_AC(iDVR,v,j,iPES) &
-                                            * dsin(iDVR*pi*(rp-channel2%r_range(1))/(channel2%r_range(2)-channel2%r_range(1)))
-                                    end do
-                                    ICWFvj_AC(iPos,ith,v,ijK,iPES) = tmp*tmpW*spgndr(j,K,Jacobi_AC(3))
-                                end do 
+                do iIC = 1, channel2%nIC
+                    iPos = idXY_AC(iIC,1)
+                    ith = idXY_AC(iIC,2)
+                    rp = interCoor_AC(iIC,4)
+                    gij = interCoor_AC(iIC,7)/channel2%Zinf/rp*pos(iPos)*interCoor_AC(iIC,2)
+                    tmpW = gij*dsqrt(int_AWeight(ith)*djFact)*dsqrt(dpos)*dsqrt(2.0_f8/(channel2%r_range(2)-channel2%r_range(1)))
+                    do ijK = 1, channel2%njK
+                        j = AC_jKPair(ijK,1)
+                        K = AC_jKPair(ijK,2)
+                        do v = 0, channel2%vmax
+                            tmp = 0.0_f8
+                            do iDVR = 1, channel2%nr 
+                                tmp = tmp + WFvj_AC(iDVR,v,j,iPES) &
+                                    * dsin(iDVR*pi*(rp-channel2%r_range(1))/(channel2%r_range(2)-channel2%r_range(1)))
                             end do
-                        end if
+                            if (abs(tmp) > 0.01_f8) then 
+                                if (ichoice == 1) then 
+                                    RCB_ACZ_range(1) = min(RCB_ACZ_range(1), pos(iPos))
+                                    RCB_ACZ_range(2) = max(RCB_ACZ_range(2), pos(iPos))
+                                    RCB_ACr_range(1) = min(RCB_ACr_range(1), interCoor_AC(iIC,2))
+                                    RCB_ACr_range(2) = max(RCB_ACr_range(2), interCoor_AC(iIC,2))
+                                else if (ichoice == 2) then
+                                    RCB_ACZ_range(1) = min(RCB_ACZ_range(1), interCoor_AC(iIC,2))
+                                    RCB_ACZ_range(2) = max(RCB_ACZ_range(2), interCoor_AC(iIC,2))
+                                    RCB_ACr_range(1) = min(RCB_ACr_range(1), pos(iPos))
+                                    RCB_ACr_range(2) = max(RCB_ACr_range(2), pos(iPos))
+                                end if
+                            end if
+                            ICWFvj_AC(iIC,v,ijK,iPES) = tmpW*tmp*spgndr(j,K,interCoor_AC(iIC,5))
+                        end do
                     end do
                 end do
             end do
@@ -454,10 +477,8 @@ contains
                     K = AC_jKPair(ijK,2)
                     do v = 0, channel2%vmax
                         norm = 0.0_f8
-                        do ith = 1, IALR%int_nA
-                            do iPos = 1, nPos
-                                norm = norm + ICWFvj_AC(iPos,ith,v,ijK,iPES)**2
-                            end do
+                        do iIC = 1, channel2%nIC
+                            norm = norm + ICWFvj_AC(iIC,v,ijK,iPES)**2
                         end do
                         write(normUnit,'(1x,i4,1x,i4,1x,i4,1x,i4,1x,f15.9,1x,f15.9)') iPES, v, j, K, Evj_AC(v,j,iPES)*au2ev,norm
                     end do
@@ -468,105 +489,351 @@ contains
 
     end subroutine interCoorWFvj
 !> ------------------------------------------------------------------------------------------------------------------ <!
+    
+!> ------------------------------------------------------------------------------------------------------------------ <!
+    subroutine setTransKMat(type)
+        implicit none
+        character(len=*), intent(in) :: type
+        real(f8), external :: dm 
+        real(f8) :: beta, fact
+        real(f8), external :: CG
+        integer :: iIC, Kr, Kp, Krmax, Kpmax
+        integer :: ijK, l, j
+
+        Krmax = min(IALR%jint, initWP%Jtot)
+
+        if (type == 'A+BC->C+AB') then 
+            Kpmax = min(channel1%jmax, initWP%Jtot)
+
+            !> Transformation matrix Ka -> Kb 
+            allocate(TKMat_AB(channel1%nIC,initWP%Kmin:Krmax,channel1%Kmin:Kpmax))
+            do Kp = channel1%Kmin, Kpmax
+                do Kr = initWP%Kmin, Krmax
+                    do iIC = 1, channel1%nIC
+                        beta = interCoor_AB(iIC,6)
+                        TKMat_AB(iIC,Kr,Kp) = dm(initWP%Jtot, Kp, Kr, beta) &
+                                            + dm(initWP%Jtot, Kp, -Kr, beta) &
+                                            * initWP%tpar*(-1.0_f8)**(Kr)
+                    end do
+                    if (Kr == 0) TKMat_AB(:,Kr,Kp) = TKMat_AB(:,Kr,Kp)/dsqrt(2.0_f8)
+                    if (Kp == 0) TKMat_AB(:,Kr,Kp) = dsqrt(2.0_f8)*TKMat_AB(:,Kr,Kp)
+                end do
+            end do
+
+            !> Qn_l in AB
+            allocate(qn_l_AB(channel1%njK))
+            do ijK = 1, channel1%njK
+                j = AB_jKPair(ijK,1)
+                do l = abs(initWP%Jtot - j), initWP%Jtot + j
+                    if ((-1)**(l+j+initWP%Jtot) == initWP%tpar) then
+                        qn_l_AB(ijK) = l
+                    end if
+                end do
+            end do
+
+            !> BLK in AB
+            allocate(BLK_AB(channel1%Kmin:Kpmax,channel1%njK))
+            BLK_AB = 0.0_f8
+            do ijK = 1, channel1%njK
+                j = AB_jKPair(ijK,1)
+                l = qn_l_AB(ijK)
+                fact = dsqrt((2.0_f8*l+1.0_f8)/(2.0_f8*initWP%Jtot+1.0_f8))
+                do Kp = channel1%Kmin, Kpmax
+                    if (Kp <= j) then 
+                        BLK_AB(Kp,ijK) = fact*CG(j,Kp,l,0,initWP%Jtot)
+                        if (Kp /= 0) BLK_AB(Kp,ijK) = BLK_AB(Kp,ijK)*dsqrt(2.0_f8)
+                    end if
+                end do
+            end do
+
+        else if (type == 'A+BC->B+AC') then
+            Kpmax = min(channel2%jmax, initWP%Jtot)
+
+            !> Transformation matrix Ka -> Kc
+            allocate(TKMat_AC(channel2%nIC,initWP%Kmin:Krmax,channel2%Kmin:Kpmax))
+            do Kp = channel2%Kmin, Kpmax
+                do Kr = initWP%Kmin, Krmax
+                    do iIC = 1, channel2%nIC
+                        beta = interCoor_AC(iIC,6)
+                        TKMat_AC(iIC,Kr,Kp) = dm(initWP%Jtot, Kp, Kr, beta) &
+                                            + dm(initWP%Jtot, Kp, -Kr, beta) &
+                                            * initWP%tpar*(-1.0_f8)**(Kr)
+                    end do
+                    if (Kr == 0) TKMat_AC(:,Kr,Kp) = TKMat_AC(:,Kr,Kp)/dsqrt(2.0_f8)
+                    if (Kp == 0) TKMat_AC(:,Kr,Kp) = dsqrt(2.0_f8)*TKMat_AC(:,Kr,Kp)
+                end do
+            end do
+
+            !> Qn_l in AC
+            allocate(qn_l_AC(channel2%njK))
+            do ijK = 1, channel2%njK
+                j = AC_jKPair(ijK,1)
+                do l = abs(initWP%Jtot - j), initWP%Jtot + j
+                    if ((-1)**(l+j+initWP%Jtot) == initWP%tpar) then
+                        qn_l_AC(ijK) = l
+                    end if
+                end do
+            end do
+
+            !> BLK in AC
+            allocate(BLK_AC(channel2%Kmin:Kpmax,channel2%njK))
+            BLK_AC = 0.0_f8
+            do ijK = 1, channel2%njK
+                j = AC_jKPair(ijK,1)
+                l = qn_l_AC(ijK)
+                fact = dsqrt((2.0_f8*l+1.0_f8)/(2.0_f8*initWP%Jtot+1.0_f8))
+                do Kp = channel2%Kmin, Kpmax
+                    if (Kp <= j) then 
+                        BLK_AC(Kp,ijK) = fact*CG(j,Kp,l,0,initWP%Jtot)
+                        if (Kp /= 0) BLK_AC(Kp,ijK) = BLK_AC(Kp,ijK)*dsqrt(2.0_f8)
+                    end if
+                end do
+            end do
+        end if
+
+    end subroutine setTransKMat
+!> ------------------------------------------------------------------------------------------------------------------ <!
 
 !> ------------------------------------------------------------------------------------------------------------------ <!
-    subroutine setUij(type, ichoice, mass, Z0P, interCoor, Uij)
+    subroutine setAtDMat(nIC, ichoice, massB, massC, interCoor, AtDMat)
+        implicit none
+        integer, intent(in) :: nIC
+        integer, intent(in) :: ichoice
+        !> AB or AC
+        real(f8), intent(in) :: massB, massC
+        real(f8), intent(in) :: interCoor(nIC,7)
+        real(f8), allocatable, intent(out) :: AtDMat(:,:,:)
+        real(f8) :: bond(3), AtD(nPES,nPES), Vadia(nPES)
+        real(f8) :: Z, rij, r, Zij, th  
+        integer :: iIC
+
+        allocate(AtDMat(nPES,nPES,nIC))
+        do iIC = 1, nIC 
+            if (ichoice == 1) then
+                Z = interCoor(iIC,1)
+                rij = interCoor(iIC,2)
+                th = acos(interCoor(iIC,3))
+                call Jacobi2Bond(Z,rij,th,massB,massC,bond)
+            else if (ichoice == 2) then
+                r = interCoor(iIC,1)
+                Zij = interCoor(iIC,2)
+                th = acos(interCoor(iIC,3))
+                call Jacobi2Bond(Zij,r,th,massB,massC,bond)
+            end if
+            call diagDiaVmat(bond, AtD, Vadia)
+            AtDMat(:,:,iIC) = AtD(:,:)
+        end do
+
+    end subroutine setAtDMat
+!> ------------------------------------------------------------------------------------------------------------------ <!
+    
+!> ------------------------------------------------------------------------------------------------------------------ <!
+    subroutine setNumberInterCoor(type, ichoice, Z0p, r_range, mass, nIC, interCoor, idXY)
         implicit none
         character(len=*), intent(in) :: type
         !> ichoice: 1 for (Z,theta), 2 for (r,theta)
         integer, intent(in) :: ichoice
+        real(f8), intent(in) :: Z0p
+        real(f8), intent(in) :: r_range(2)
         !> Mass in A, B, C order
         real(f8), intent(in) :: mass(3)
-        real(f8), intent(in) :: Z0P
-        !> For rij or Zij and gij
-        real(f8), allocatable, intent(out) :: interCoor(:,:,:)
-        real(f8), allocatable, intent(out) :: Uij(:,:,:)
-        real(f8) :: r_gij, Z_gij
-        real(f8) :: costh, r, Z, rmid, Zmid
-        real(f8) :: rFact, Zfact, A, B
-        integer :: iZ, ith, ir, iU
+        integer, intent(out) :: nIC
+        real(f8), allocatable, intent(out) :: interCoor(:,:)
+        integer, allocatable, intent(out) :: idXY(:,:)
+        real(f8) :: R_Jacobi(3), P_Jacobi(3)
+        real(f8) ::  costh, Z, r, rp, beta
+        real(f8) :: rij, Zij, gij
+        integer :: ir, iZ, ith, iIC 
 
         A_beta = (mass(1)+mass(2))/mass(1)-mass(3)/(mass(2)+mass(3))
         B_beta = (mass(1)+mass(2))/mass(1)
         A_gamma = (mass(1)+mass(3))/mass(1)-mass(2)/(mass(2)+mass(3))
         B_gamma = (mass(1)+mass(3))/mass(1)
-        rFact = 2.0_f8/dsqrt((IALR%r_range(2)-IALR%r_range(1))*(IALR%vint+1.0_f8))
-        Zfact = 2.0_f8/dsqrt((Z_IALR(IALR%nZ_I)-Z_IALR(1))*(IALR%nZ_I+1.0_f8))
 
-        if (type == 'A+BC->C+AB') then
-            A = A_beta
-            B = B_beta
-        else if (type == 'A+BC->B+AC') then
-            A = A_gamma
-            B = B_gamma
+        nIC = 0
+        if (ichoice == 1) then
+            do iZ = 1, IALR%nZ_I
+                do ith = 1, IALR%int_nA
+                    costh = int_ANode(ith)
+                    Z = Z_IALR(iZ)
+                    if (type == 'A+BC->C+AB') then
+                        rij = RCB_rmid(A_beta, B_beta, Z0p, Z, costh)
+                    else if (type == 'A+BC->B+AC') then
+                        rij = RCB_rmid(A_gamma, B_gamma, Z0p, Z, -costh)
+                    end if
+                    if (rij > r_Int(1) .and. rij < r_Int(IALR%vint)) then
+                        R_Jacobi(1) = rij 
+                        R_Jacobi(2) = Z
+                        R_Jacobi(3) = costh
+                        call Jacobi_R2P(type, mass, R_Jacobi, P_Jacobi)
+                        rp = P_Jacobi(1)
+                        if (rp > r_range(1) .and. rp < r_range(2)) then
+                            nIC = nIC + 1
+                        end if
+                    end if
+                end do
+            end do
+        else if (ichoice == 2) then
+            do ir = 1, IALR%vint
+                do ith = 1, IALR%int_nA
+                    costh = int_ANode(ith)
+                    r = r_Int(ir)
+                    if (type == 'A+BC->C+AB') then
+                        Zij = RCB_Zmid(A_beta, B_beta, Z0p, r, costh)
+                    else if (type == 'A+BC->B+AC') then
+                        Zij = RCB_Zmid(A_gamma, B_gamma, Z0p, r, -costh)
+                    end if
+                    if (Zij > Z_IALR(1) .and. Zij < Z_IALR(IALR%nZ_I)) then
+                        R_Jacobi(1) = r
+                        R_Jacobi(2) = Zij
+                        R_Jacobi(3) = costh
+                        call Jacobi_R2P(type, mass, R_Jacobi, P_Jacobi)
+                        rp = P_Jacobi(1)
+                        if (rp > r_range(1) .and. rp < r_range(2)) then
+                            nIC = nIC + 1
+                        end if
+                    end if
+                end do
+            end do
         else
-            write(outFileUnit,*) 'Error in setUij: unknown type ', type
-            write(outFileUnit,*) 'POSITION: interCoorRCB.f90, subroutine setUij'
+            write(outFileUnit,*) 'Error in setNumberInterCoor: unknown ichoice ', ichoice
+            write(outFileUnit,*) 'POSITION: interCoorRCB.f90, subroutine setNumberInterCoor'
             stop
         end if
 
+        if (nIC == 0) then
+            write(outFileUnit,*) 'Error in setNumberInterCoor: nIC = 0!'
+            write(outFileUnit,*) 'POSITION: interCoorRCB.f90, subroutine setNumberInterCoor'
+            stop
+        end if
+
+        allocate(interCoor(nIC,7))
+        allocate(idXY(nIC,2))
+
+        iIC = 0
+        if (ichoice == 1) then
+            do iZ = 1, IALR%nZ_I
+                do ith = 1, IALR%int_nA
+                    costh = int_ANode(ith)
+                    Z = Z_IALR(iZ)
+                    if (type == 'A+BC->C+AB') then
+                        rij = RCB_rmid(A_beta, B_beta, Z0p, Z, costh)
+                        gij = rJacobiFactor(A_beta, B_beta, Z0p, Z, costh)
+                    else if (type == 'A+BC->B+AC') then
+                        rij = RCB_rmid(A_gamma, B_gamma, Z0p, Z, -costh)
+                        gij = rJacobiFactor(A_gamma, B_gamma, Z0p, Z, -costh)
+                    end if
+                    if (rij > r_Int(1) .and. rij < r_Int(IALR%vint)) then
+                        R_Jacobi(1) = rij 
+                        R_Jacobi(2) = Z
+                        R_Jacobi(3) = costh
+                        call Jacobi_R2P(type, mass, R_Jacobi, P_Jacobi, beta)
+                        rp = P_Jacobi(1)
+                        if (rp > r_range(1) .and. rp < r_range(2)) then
+                            iIC = iIC + 1
+                            interCoor(iIC,1) = Z 
+                            interCoor(iIC,2) = rij 
+                            interCoor(iIC,3) = costh
+                            interCoor(iIC,4) = rp 
+                            interCoor(iIC,5) = P_Jacobi(3)
+                            interCoor(iIC,6) = beta
+                            interCoor(iIC,7) = gij
+                            idXY(iIC,1) = iZ
+                            idXY(iIC,2) = ith
+                        end if
+                    end if
+                end do
+            end do
+        else if (ichoice == 2) then
+            do ir = 1, IALR%vint
+                do ith = 1, IALR%int_nA
+                    costh = int_ANode(ith)
+                    r = r_Int(ir)
+                    if (type == 'A+BC->C+AB') then
+                        Zij = RCB_Zmid(A_beta, B_beta, Z0p, r, costh)
+                        gij = ZJacobiFactor(A_beta, B_beta, Z0p, r, costh)
+                    else if (type == 'A+BC->B+AC') then
+                        Zij = RCB_Zmid(A_gamma, B_gamma, Z0p, r, -costh)
+                        gij = ZJacobiFactor(A_gamma, B_gamma, Z0p, r, -costh)
+                    end if
+                    if (Zij > Z_IALR(1) .and. Zij < Z_IALR(IALR%nZ_I)) then
+                        R_Jacobi(1) = r
+                        R_Jacobi(2) = Zij
+                        R_Jacobi(3) = costh
+                        call Jacobi_R2P(type, mass, R_Jacobi, P_Jacobi, beta)
+                        rp = P_Jacobi(1)
+                        if (rp > r_range(1) .and. rp < r_range(2)) then
+                            iIC = iIC + 1
+                            interCoor(iIC,1) = r 
+                            interCoor(iIC,2) = Zij 
+                            interCoor(iIC,3) = costh
+                            interCoor(iIC,4) = rp
+                            interCoor(iIC,5) = P_Jacobi(3)
+                            interCoor(iIC,6) = beta
+                            interCoor(iIC,7) = gij
+                            idXY(iIC,1) = ir
+                            idXY(iIC,2) = ith
+                        end if
+                    end if
+                end do
+            end do
+        end if
+
+    end subroutine setNumberInterCoor
+!> ------------------------------------------------------------------------------------------------------------------ <!
+
+!> ------------------------------------------------------------------------------------------------------------------ <!
+    subroutine setUij(ichoice, nIC, interCoor, idXY, Uij)
+        implicit none
+        !> ichoice: 1 for (Z,theta), 2 for (r,theta)
+        integer, intent(in) :: ichoice
+        integer, intent(in) :: nIC
+        real(f8), intent(in) :: interCoor(nIC,7)
+        integer, intent(in) :: idXY(nIC,2)
+        real(f8), allocatable, intent(out) :: Uij(:,:)
+        real(f8) :: rFact, Zfact
+        integer :: iZ, ir, iU, iIC
+
+        rFact = 2.0_f8/dsqrt((IALR%r_range(2)-IALR%r_range(1))*(IALR%vint+1.0_f8))
+        Zfact = 2.0_f8/dsqrt((Z_IALR(IALR%nZ_I)-Z_IALR(1))*(IALR%nZ_I+1.0_f8))
+
 !> Set the Uij transformation matrix
         if (ichoice == 1) then
-            !> Uij(r_ij,Z_i,theta_j)
-            allocate(Uij(IALR%vint,IALR%nZ_I,IALR%int_nA))
-            allocate(interCoor(IALR%nZ_I,IALR%int_nA,2))
+            !> Uij(r_ij,nIC)
+            allocate(Uij(IALR%vint,nIC))
         else if (ichoice == 2) then
-            !> Uij(Z_ij,r_i,theta_j)
-            allocate(Uij(IALR%nZ_I,IALR%vint,IALR%int_nA))
-            allocate(interCoor(IALR%vint,IALR%int_nA,2))
+            !> Uij(Z_ij,nIC)
+            allocate(Uij(IALR%nZ_I,nIC))
         else
             write(outFileUnit,*) 'Error in setUij: unknown ichoice ', ichoice
             write(outFileUnit,*) 'POSITION: interCoorRCB.f90, subroutine setUij'
             stop
         end if
-        do ith = 1, IALR%int_nA 
-            if (type == 'A+BC->C+AB') then
-                ! For AB channel, geometry implies pi - theta
-                costh = int_ANode(ith)
-            else if (type == 'A+BC->B+AC') then
-                costh = -int_ANode(ith)
-            end if
 
+        do iIC = 1, nIC
             if (ichoice == 1) then
-                do iZ = 1, IALR%nZ_I 
-                    Z = Z_IALR(iZ)
-                    r_gij = rJacobiFactor(A, B, Z0P, Z, costh)
-                    rmid = RCB_rmid(A, B, Z0P, Z, costh)
-                    if (rmid < r_Int(1) .or. rmid > r_Int(IALR%vint)) rmid = 0.0_f8
-                    interCoor(iZ,ith,1) = rmid
-                    interCoor(iZ,ith,2) = r_gij
-
-                    do iU = 1, IALR%vint
-                        Uij(iU,iZ,ith) = 0.0_f8
-                        do ir = 1, IALR%vint 
-                            Uij(iU,iZ,ith) = Uij(iU,iZ,ith) &
-                                            + dsin(ir*pi*(rmid-IALR%r_range(1))/(IALR%r_range(2)-IALR%r_range(1))) &
-                                            * dsin(iU*ir*pi/(IALR%vint+1.0_f8)) 
-                        end do
-                        Uij(iU,iZ,ith) = Uij(iU,iZ,ith) * rFact * r_gij
+                do iU = 1, IALR%vint
+                    Uij(iU,iIC) = 0.0_f8
+                    do ir = 1, IALR%vint 
+                        Uij(iU,iIC) = Uij(iU,iIC) &
+                                    + dsin(ir*pi*(interCoor(iIC,2)-IALR%r_range(1))/(IALR%r_range(2)-IALR%r_range(1))) &
+                                    * dsin(iU*ir*pi/(IALR%vint+1.0_f8)) 
                     end do
+                    Uij(iU,iIC) = Uij(iU,iIC) * rFact * interCoor(iIC,7)
                 end do
             else if (ichoice == 2) then
-                do ir = 1, IALR%vint
-                    r = r_Int(ir)
-                    Z_gij = ZJacobiFactor(A, B, Z0P, r, costh)
-                    Zmid = RCB_Zmid(A, B, Z0P, r, costh)
-                    if (Zmid < Z_IALR(1) .or. Zmid > Z_IALR(IALR%nZ_I)) Zmid = 0.0_f8
-                    interCoor(ir,ith,1) = Zmid
-                    interCoor(ir,ith,2) = Z_gij
-
-                    do iU = 1, IALR%nZ_I 
-                        Uij(iU,ir,ith) = 0.0_f8
-                        do iZ = 1, IALR%nZ_I 
-                            Uij(iU,ir,ith) = Uij(iU,ir,ith) &
-                                            + dsin(iZ*pi*(Zmid-Z_IALR(1))/(Z_IALR(IALR%nZ_I)-Z_IALR(1))) &
-                                            * dsin(iU*iZ*pi/(IALR%nZ_I+1.0_f8)) 
-                        end do
-                        Uij(iU,ir,ith) = Uij(iU,ir,ith) * Zfact * Z_gij
+                do iU = 1, IALR%nZ_I 
+                    Uij(iU,iIC) = 0.0_f8
+                    do iZ = 1, IALR%nZ_I 
+                        Uij(iU,iIC) = Uij(iU,iIC) &
+                                    + dsin(iZ*pi*(interCoor(iIC,1)-Z_IALR(1))/(Z_IALR(IALR%nZ_I)-Z_IALR(1))) &
+                                    * dsin(iU*iZ*pi/(IALR%nZ_I+1.0_f8)) 
                     end do
+                    Uij(iU,iIC) = Uij(iU,iIC) * Zfact * interCoor(iIC,7)
                 end do
             end if
         end do
+
     end subroutine setUij
 !> ------------------------------------------------------------------------------------------------------------------ <!
         
@@ -611,9 +878,9 @@ contains
 
         if (present(beta)) then
             if (type == 'A+BC->C+AB') then 
-                beta = (a2*R_Jacobi(2)+a3*R_Jacobi(1)*R_Jacobi(3)) / P_Jacobi(2)
-            else if (type == 'A+BC->B+AC') then
                 beta = (-a2*R_Jacobi(2)-a3*R_Jacobi(1)*R_Jacobi(3)) / P_Jacobi(2)
+            else if (type == 'A+BC->B+AC') then
+                beta = (a2*R_Jacobi(2)+a3*R_Jacobi(1)*R_Jacobi(3)) / P_Jacobi(2)
             end if
 
             if (dabs(beta) > 1.0_f8) then 

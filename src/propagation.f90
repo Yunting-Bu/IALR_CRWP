@@ -12,9 +12,10 @@ module m_Prop
 !> Auxiliary wave-packet arrays for propagation
     real(f8), allocatable, private :: int_auxWP(:,:,:,:)
     real(f8), allocatable, private :: asy_auxWP(:,:,:,:)
-    real(f8), allocatable, private :: lr_auxWP(:,:)
+    real(f8), allocatable, private :: lr_auxWP(:,:,:,:)
 
     public
+    private :: ChebyshevRecursion, setTIDWF, totHamAction
     private :: setKinMat, setRotMat, setCPMat
     private :: kinAction, rotAction, CPAction, VpotAction
     private :: lambdaPlus, lambdaMinus
@@ -32,7 +33,7 @@ contains
         asy_njMax = max(asy_njK, IALR%asy_nA)
         allocate(int_auxWP(IALR%nZ_I, IALR%vint, int_njMax, nPES))
         allocate(asy_auxWP(IALR%nZ_IA, IALR%vasy, asy_njMax, nPES))
-        allocate(lr_auxWP(IALR%nZ_IALR, lr_njK))
+        allocate(lr_auxWP(IALR%nZ_IALR, IALR%vlr, lr_njK, 1))
 
 !> k = 0, |\phi>_0 = |initWP>
         lr_TDWPm = lr_TDWP; lr_TDWP = 0.0_f8
@@ -44,7 +45,7 @@ contains
         iStep = 0
         write(outFileUnit,'(1x,a)') '=====> Chebyshev propagation <====='
         write(outFileUnit,'(1x,a)') ''
-        lr_norm = sum(abs(lr_TDWPm(IALR%nZ_IA+1:IALR%nZ_IALR,:))**2)
+        lr_norm = sum(abs(lr_TDWPm(IALR%nZ_IA+1:IALR%nZ_IALR,:,:,1))**2)
         asy_norm = sum(abs(asy_TDWPm(IALR%nZ_I+1:IALR%nZ_IA,:,:,:))**2)
         int_norm = sum(abs(int_TDWPm(1:IALR%nZ_I,:,:,:))**2)
         tot_norm = lr_norm + asy_norm + int_norm
@@ -55,9 +56,13 @@ contains
                                                                         ' , totNorm = ', tot_norm
         do iStep = 1, timeTot
             call ChebyshevRecursion(iStep)
+            call setTIDWF(iStep,'A+BC->C+AB',channel1%ichoice)
+            if (nChannel == 2) then 
+                call setTIDWF(iStep,'A+BC->B+AC',channel2%ichoice)
+            end if
             iPrint = iPrint + 1
             if (iPrint == timePrint) then 
-                lr_norm = sum(abs(lr_TDWPm(IALR%nZ_IA+1:IALR%nZ_IALR,:))**2)
+                lr_norm = sum(abs(lr_TDWPm(IALR%nZ_IA+1:IALR%nZ_IALR,:,:,1))**2)
                 asy_norm = sum(abs(asy_TDWPm(IALR%nZ_I+1:IALR%nZ_IA,:,:,:))**2)
                 int_norm = sum(abs(int_TDWPm(1:IALR%nZ_I,:,:,:))**2)
                 tot_norm = lr_norm + asy_norm + int_norm
@@ -92,10 +97,12 @@ contains
         end if
 !> Long range region
         do ijK = 1, lr_njK
-            do iZ = IALR%nZ_IA+1, IALR%nZ_IALR
-                WFtmp = fact*lr_TDWPm(iZ,ijK)
-                lr_TDWPm(iZ,ijK) = 2.0_f8*lr_TDWP(iZ,ijK)*lr_ZFabs(iZ)
-                lr_TDWP(iZ,ijK) = -WFtmp*lr_ZFabs(iZ)
+            do ir = 1, IALR%vlr
+                do iZ = IALR%nZ_IA+1, IALR%nZ_IALR
+                    WFtmp = fact*lr_TDWPm(iZ,ir,ijK,1)
+                    lr_TDWPm(iZ,ir,ijK,1) = 2.0_f8*lr_TDWP(iZ,ir,ijK,1)*lr_ZFabs(iZ)
+                    lr_TDWP(iZ,ir,ijK,1) = -WFtmp*lr_ZFabs(iZ)
+                end do
             end do
         end do
 !> Asymptotic region
@@ -119,29 +126,118 @@ contains
 !$OMP end parallel do
         end do
 !> Interaction region
-        do iPES = 1, nPES
-!$OMP parallel do default(shared) private(ijK,ir,iZ,j,VabsTmp,WFtmp)
-            do ijK = 1, int_njK
-                do ir = 1, IALR%vint
-                    do iZ = 1, IALR%nZ_I
-                        j = int_jKPair(ijK,1)
-                        if (iPES == initWP%PES0 .and. j == initWP%j0 .and. ir == initWP%v0+1) then
-                            VabsTmp = 1.0_f8
-                        else if (r_Int(ir) <= r_Asy(IALR%vasy)) then
-                            VabsTmp = 1.0_f8
-                        else
-                            VabsTmp = int_ZFabs(iZ)
-                        end if
-                        WFtmp = fact*int_TDWPm(iZ,ir,ijK,iPES)
-                        int_TDWPm(iZ,ir,ijK,iPES) = 2.0_f8*int_TDWP(iZ,ir,ijK,iPES)*VabsTmp
-                        int_TDWP(iZ,ir,ijK,iPES) = -WFtmp*VabsTmp
-                    end do
-                end do
-            end do
-!$OMP end parallel do
-        end do
+!        do iPES = 1, nPES
+!!$OMP parallel do default(shared) private(ijK,ir,iZ,j,VabsTmp,WFtmp)
+!            do ijK = 1, int_njK
+!                do ir = 1, IALR%vint
+!                    do iZ = 1, IALR%nZ_I
+!                        j = int_jKPair(ijK,1)
+!                        if (iPES == initWP%PES0 .and. j == initWP%j0 .and. ir == initWP%v0+1) then
+!                            VabsTmp = 1.0_f8
+!                        else if (r_Int(ir) <= r_Asy(IALR%vasy)) then
+!                            VabsTmp = 1.0_f8
+!                        else
+!                            VabsTmp = int_ZFabs(iZ)
+!                        end if
+!                        WFtmp = fact*int_TDWPm(iZ,ir,ijK,iPES)
+!                        int_TDWPm(iZ,ir,ijK,iPES) = 2.0_f8*int_TDWP(iZ,ir,ijK,iPES)*VabsTmp
+!                        int_TDWP(iZ,ir,ijK,iPES) = -WFtmp*VabsTmp
+!                    end do
+!                end do
+!            end do
+!!$OMP end parallel do
+!        end do
         
     end subroutine ChebyshevRecursion
+!> ------------------------------------------------------------------------------------------------------------------ <!
+
+!> ------------------------------------------------------------------------------------------------------------------ <!
+    subroutine setTIDWF(iStep,type,ichoice)
+        implicit none
+        integer, intent(in) :: iStep
+        character(len=*), intent(in) :: type
+        integer, intent(in) :: ichoice
+        real(f8) :: FourierFactor(nEtot)
+        real(f8) :: tmp
+        integer :: iZ, ir, ith, iPES, iEtot, iIC, nIC
+
+
+        FourierFactor(:) = (2.0_f8, 0.0_f8) * exp(cmplx(0.0_f8,-iStep*ChebyAngle(:), kind=c8))
+
+        !> Trans angle FBR to DVR 
+        do iPES = 1, nPES
+            call dgemm('N','T',IALR%nZ_I*IALR%vint,&
+                        IALR%int_nA,int_njK,&
+                        1.0_f8,int_TDWPm(1,1,1,iPES),IALR%nZ_I*IALR%vint, &
+                        int_YMat(1,1),IALR%int_nA,&
+                        0.0_f8,int_auxWP(1,1,1,iPES),IALR%nZ_I*IALR%vint)
+        end do
+
+        if (type == 'A+BC->C+AB') then 
+            nIC = channel1%nIC
+        else if (type == 'A+BC->B+AC') then
+            nIC = channel2%nIC
+        end if
+
+        if (ichoice == 1) then 
+            do iPES = 1, nPES
+                do iIC = 1, nIC
+                    if (type == 'A+BC->C+AB') then
+                        iZ = idXY_AB(iIC,1)
+                        ith = idXY_AB(iIC,2) 
+                        tmp = 0.0_f8
+                        do ir = 1, IALR%vint 
+                            tmp = tmp + Uij_AB(ir,iIC)*int_auxWP(iZ,ir,ith,iPES)
+                        end do 
+                        do iEtot = 1, nEtot
+                            intAB_TIDWF(iIC,:,iPES,iEtot) = intAB_TIDWF(iIC,:,iPES,iEtot) + &
+                                                            tmp * FourierFactor(iEtot)
+                        end do
+                    else if (type == 'A+BC->B+AC') then
+                        iZ = idXY_AC(iIC,1)
+                        ith = idXY_AC(iIC,2)
+                        tmp = 0.0_f8
+                        do ir = 1, IALR%vint 
+                            tmp = tmp + Uij_AC(ir,iIC)*int_auxWP(iZ,ir,ith,iPES)
+                        end do 
+                        do iEtot = 1, nEtot
+                            intAC_TIDWF(iIC,:,iPES,iEtot) = intAC_TIDWF(iIC,:,iPES,iEtot) + &
+                                                                        tmp * FourierFactor(iEtot)  
+                        end do
+                    end if
+                end do
+            end do
+        else if (ichoice == 2) then
+            do iPES = 1, nPES
+                do iIC = 1, nIC 
+                    if (type == 'A+BC->C+AB') then 
+                        ir = idXY_AB(iIC,1)
+                        ith = idXY_AB(iIC,2)
+                        tmp = 0.0_f8
+                        do iZ = 1, IALR%nZ_I 
+                            tmp = tmp + Uij_AB(iZ,iIC)*int_auxWP(iZ,ir,ith,iPES)
+                        end do 
+                        do iEtot = 1, nEtot
+                            intAB_TIDWF(iIC,:,iPES,iEtot) = intAB_TIDWF(iIC,:,iPES,iEtot) + &
+                                                            tmp * FourierFactor(iEtot)
+                        end do
+                    else if (type == 'A+BC->B+AC') then
+                        ir = idXY_AC(iIC,1)
+                        ith = idXY_AC(iIC,2)
+                        tmp = 0.0_f8
+                        do iZ = 1, IALR%nZ_I 
+                            tmp = tmp + Uij_AC(iZ,iIC)*int_auxWP(iZ,ir,ith,iPES)
+                        end do 
+                        do iEtot = 1, nEtot
+                            intAC_TIDWF(iIC,:,iPES,iEtot) = intAC_TIDWF(iIC,:,iPES,iEtot) + &
+                                                            tmp * FourierFactor(iEtot)  
+                        end do
+                    end if
+                end do
+            end do
+        end if
+
+    end subroutine setTIDWF
 !> ------------------------------------------------------------------------------------------------------------------ <!
 
 !> ------------------------------------------------------------------------------------------------------------------ <!
@@ -158,6 +254,8 @@ contains
                         int_PO2FBR,int_auxWP,int_TDWP,int_TDWPm)
         call rBasisTrans('FBR2DVR',IALR%nZ_IA,IALR%vasy,asy_njK, &
                         asy_PO2FBR,asy_auxWP,asy_TDWP,asy_TDWPm)
+        call rBasisTrans('FBR2DVR',IALR%nZ_IALR,IALR%vlr,lr_njK, &
+                        lr_PO2FBR,lr_auxWP,lr_TDWP,lr_TDWPm)
 
         call VpotAction()
         call rotAction()
@@ -177,7 +275,8 @@ contains
                         int_PO2FBR,int_auxWP,int_TDWP,int_TDWPm)
         call rBasisTrans('DVR2FBR',IALR%nZ_IA,IALR%vasy,asy_njK, &
                         asy_PO2FBR,asy_auxWP,asy_TDWP,asy_TDWPm)
-
+        call rBasisTrans('DVR2FBR',IALR%nZ_IALR,IALR%vlr,lr_njK, &
+                        lr_PO2FBR,lr_auxWP,lr_TDWP,lr_TDWPm)
     end subroutine totHamAction
 !> ------------------------------------------------------------------------------------------------------------------ <!
 
@@ -192,7 +291,7 @@ contains
             call dcopy(int_njK*IALR%vint*IALR%nZ_I,int_TDWPm(1,1,1,iPES),1,int_auxWP(1,1,1,iPES),1)
             call dcopy(asy_njK*IALR%vasy*IALR%nZ_IA,asy_TDWPm(1,1,1,iPES),1,asy_auxWP(1,1,1,iPES),1)
         end do 
-        call dcopy(lr_njK*IALR%nZ_IALR,lr_TDWPm,1,lr_auxWP,1)
+        call dcopy(lr_njK*IALR%vlr*IALR%nZ_IALR,lr_TDWPm,1,lr_auxWP,1)
 
 !> Copy int_auxWP to asy_auxWP
         do iPES = 1, nPES 
@@ -214,18 +313,20 @@ contains
             if (initWP%j0 >= K) then 
                 idjKa  = asy_seqjK(initWP%j0,K)
                 idjKl = lr_seqjK(initWP%j0,K)
-                lr_auxWP(1:IALR%nZ_IA,idjKl) = asy_auxWP(1:IALR%nZ_IA,initWP%v0+1,idjKa,initWP%PES0)
+                lr_auxWP(1:IALR%nZ_IA,1:IALR%vlr,idjKl,1) = asy_auxWP(1:IALR%nZ_IA,1:IALR%vlr,idjKa,initWP%PES0)
             end if
         end do
 
 !> Kinectic action
         !> long range
         do idjkl = 1, lr_njK
-            call dsint(IALR%nZ_IALR, lr_auxWP(1,idjkl), lr_WSaveZ)
-            do iZ = 1, IALR%nZ_IALR
-                lr_auxWP(iZ,idjkl) = lr_kinEigen(iZ) * lr_auxWP(iZ,idjkl)
+            do ir = 1, IALR%vlr
+                call dsint(IALR%nZ_IALR, lr_auxWP(1,ir,idjkl,1), lr_WSaveZ)
+                do iZ = 1, IALR%nZ_IALR
+                    lr_auxWP(iZ,ir,idjkl,1) = lr_kinEigen(iZ,ir) * lr_auxWP(iZ,ir,idjkl,1)
+                end do
+                call dsint(IALR%nZ_IALR, lr_auxWP(1,ir,idjkl,1), lr_WSaveZ)
             end do
-            call dsint(IALR%nZ_IALR, lr_auxWP(1,idjkl), lr_WSaveZ)
         end do
 
         !> asymptotic region
@@ -264,7 +365,7 @@ contains
             if (initWP%j0 >= K) then 
                 idjKa  = asy_seqjK(initWP%j0,K)
                 idjKl = lr_seqjK(initWP%j0,K)
-                asy_auxWP(1:IALR%nZ_IA,initWP%v0+1,idjKa,initWP%PES0) = lr_auxWP(1:IALR%nZ_IA,idjKl)
+                asy_auxWP(1:IALR%nZ_IA,1:IALR%vlr,idjKa,initWP%PES0) = lr_auxWP(1:IALR%nZ_IA,1:IALR%vlr,idjKl,1)
             end if
         end do
 !> Copy asy_auxWP to int_auxWP
@@ -286,7 +387,7 @@ contains
             call daxpy(int_njK*IALR%vint*IALR%nZ_I,1.0_f8,int_auxWP(1,1,1,iPES),1,int_TDWP(1,1,1,iPES),1)
             call daxpy(asy_njK*IALR%vasy*IALR%nZ_IA,1.0_f8,asy_auxWP(1,1,1,iPES),1,asy_TDWP(1,1,1,iPES),1)
         end do
-        call daxpy(lr_njK*IALR%nZ_IALR,1.0_f8,lr_auxWP,1,lr_TDWP,1)
+        call daxpy(lr_njK*IALR%vlr*IALR%nZ_IALR,1.0_f8,lr_auxWP,1,lr_TDWP,1)
 
     end subroutine kinAction
 !> ------------------------------------------------------------------------------------------------------------------ <!
@@ -332,9 +433,11 @@ contains
             do K = initWP%Kmin, Kmax
                 idjK = lr_seqjK(initWP%j0,K)
                 jdjK = lr_seqjK(initWP%j0,Kp)
-                lr_TDWP(1:IALR%nZ_IALR,idjK) = lr_TDWP(1:IALR%nZ_IALR,idjK) + &
-                                                lr_CPMat(1:IALR%nZ_IALR,idjK,jdjK) * &
-                                                lr_TDWPm(1:IALR%nZ_IALR,jdjK)
+                do iZ = 1, IALR%nZ_IALR
+                    lr_TDWP(iZ,:,idjK,1) = lr_TDWP(iZ,:,idjK,1) + &
+                                            lr_CPMat(iZ,idjK,jdjK) * &
+                                            lr_TDWPm(iZ,:,jdjK,1)
+                end do
             end do
         end do
 
@@ -372,12 +475,15 @@ contains
         end do
 
         !> long range region
+!$OMP parallel do default(shared) private(idjK,ir,iZ)
         do idjK = 1, lr_njK
-            do iZ = IALR%nZ_IA+1, IALR%nZ_IALR
-                lr_TDWP(iZ,idjK) = lr_rotMat(idjK)*lr_TDWPm(iZ,idjK)+lr_TDWP(iZ,idjK)
-            end do
+            do ir = 1, IALR%vlr
+                do iZ = IALR%nZ_IA+1, IALR%nZ_IALR
+                    lr_TDWP(iZ,ir,idjK,1) = lr_rotMat(ir,idjK)*lr_TDWPm(iZ,ir,idjK,1)+lr_TDWP(iZ,ir,idjK,1)
+                end do
+            end do 
         end do
-
+!$OMP end parallel do
     end subroutine rotAction
 !> ------------------------------------------------------------------------------------------------------------------ <!
 
@@ -465,8 +571,10 @@ contains
 
         !> long range region
         do ith = 1, lr_njK
-            do iZ  = IALR%nZ_IA+1, IALR%nZ_IALR
-                lr_TDWP(iZ,ith) = lr_Vdia(iZ-IALR%nZ_IA)*lr_TDWPm(iZ,ith)+lr_TDWP(iZ,ith)
+            do ir = 1, IALR%vlr
+                do iZ  = IALR%nZ_IA+1, IALR%nZ_IALR
+                    lr_TDWP(iZ,ir,ith,1) = lr_Vdia(iZ-IALR%nZ_IA,ir)*lr_TDWPm(iZ,ir,ith,1)+lr_TDWP(iZ,ir,ith,1)
+                end do
             end do
         end do
 
@@ -584,10 +692,11 @@ contains
 !> Kinetic energy along r
         allocate(int_rKinMat(IALR%vint))
         allocate(asy_rKinMat(IALR%vasy))
+        allocate(lr_rKinMat(IALR%vlr))
 
         int_rKinMat(:) = int_POEig(1:IALR%vint)
         asy_rKinMat(:) = int_POEig(1:IALR%vasy)
-        lr_rKinMat = int_POEig(initWP%v0+1)
+        lr_rKinMat(:) = int_POEig(1:IALR%vlr)
 
         TrMin = int_POEig(1)
         TrMax = int_POEig(IALR%vint)
@@ -603,13 +712,15 @@ contains
 
         allocate(int_rotMat(IALR%vint,int_njK))
         allocate(asy_rotMat(IALR%vasy,asy_njK))
-        allocate(lr_rotMat(lr_njK))
+        allocate(lr_rotMat(IALR%vlr,lr_njK))
 
 !> long range 
         do ijK = 1, lr_njK
-            qn_j = lr_jKPair(ijK,1)
-            jEigen = (qn_j*(qn_j+1.0_f8)) / (2.0_f8*massBC*r_LR(1)**2)
-            lr_rotMat(ijK) = min(jEigen, TMaxCut)
+            do ir = 1, IALR%vlr 
+                qn_j = lr_jKPair(ijK,1)
+                jEigen = (qn_j*(qn_j+1.0_f8)) / (2.0_f8*massBC*r_LR(ir)**2)
+                lr_rotMat(ir,ijK) = min(jEigen, TMaxCut)
+            end do
         end do
 !> asymptotic region
         do ijK = 1, asy_njK

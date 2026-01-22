@@ -157,7 +157,7 @@ contains
         nabs = 0
         do i = 1, nGird
             if (grid(i) >= rangeNoAbs) then
-                VabsMat(i) = dexp(-Cabs * ((grid(i)-rangeNoAbs)/(rangeAll - rangeNoAbs))**2*timeStep)
+                VabsMat(i) = dexp(-Cabs * ((grid(i)-rangeNoAbs)/(rangeAll - rangeNoAbs))**2)
             else
                 VabsMat(i) = 1.0_f8
                 nabs = i
@@ -182,23 +182,20 @@ contains
         allocate(int_rFabs(IALR%vint))
         write(outFileUnit,'(1x,a)') 'Absorbing potential in r:'
         call setVabs(Vabs%rabs_range,Vabs%Cr,IALR%vint,r_Int,Vabs%nrint,int_rFabs) 
-        write(100,*) int_rFabs
 !> Vabs in Z_int
-        allocate(int_ZFabs(IALR%nZ_I))
-        write(outFileUnit,'(1x,a)') 'Absorbing potential in Z_int: '
-        call setVabs(Vabs%Zint_range,Vabs%Cint,IALR%nZ_I,Z_IALR(1:IALR%nZ_I),Vabs%nZint,int_ZFabs)
-        write(101,*) int_ZFabs
+!        allocate(int_ZFabs(IALR%nZ_I))
+!        write(outFileUnit,'(1x,a)') 'Absorbing potential in Z_int: '
+!        call setVabs(Vabs%Zint_range,Vabs%Cint,IALR%nZ_I,Z_IALR(1:IALR%nZ_I),Vabs%nZint,int_ZFabs)
+!        write(101,*) int_ZFabs
 !> Vabs in long-range
         allocate(lr_ZFabs(IALR%nZ_IALR))
         write(outFileUnit,'(1x,a)') 'Absorbing potential in Z_lr:'
         call setVabs(Vabs%Zlr_range,Vabs%Clr,IALR%nZ_IALR,Z_IALR,Vabs%nZlr,lr_ZFabs)
-        write(102,*) lr_ZFabs
 !> Vabs in asymptotic
         allocate(asy_ZFabs(IALR%nZ_IA))
         write(outFileUnit,'(1x,a)') 'Absorbing potential in Z_asy:'
         write(outFileUnit,'(1x,a)') 'Note that the Vabs only works for the channel with (v, j, iPES) /= (v0, j0, initPES)!'
         call setVabs(Vabs%Zasy_range,Vabs%Casy,IALR%nZ_IA,Z_IALR(1:IALR%nZ_IA),Vabs%nZasy,asy_ZFabs)
-        write(103,*) asy_ZFabs
         write(outFileUnit,'(1x,a)') ''
     end subroutine initAllVabs
 !> ------------------------------------------------------------------------------------------------------------------ <!
@@ -266,7 +263,7 @@ contains
         real(f8), allocatable :: Z_asy(:), Z_lr(:)
         character(len=3) :: region
         character(len=100) :: fileName
-        integer :: iZ 
+        integer :: iZ, ir
         real(f8) :: Z, r, theta, bond(3)
         real(f8) :: VBC, Vdia(1,1)
         
@@ -280,7 +277,7 @@ contains
 
         allocate(int_Vdia(nPES,nPES,IALR%nZ_I,IALR%vint,IALR%int_nA))
         allocate(asy_Vdia(nPES,nPES,asy_nZ,IALR%vasy,IALR%asy_nA))
-        allocate(lr_Vdia(lr_nZ))
+        allocate(lr_Vdia(lr_nZ,IALR%vlr))
 
 !> interaction region
         region = 'int'
@@ -317,14 +314,16 @@ contains
             write(outFileUnit,'(1x,a)') 'Calculating interaction potential in the long-range region...'
             do  iZ = 1, lr_nZ
                 Z = Z_lr(iZ)
-                r = r_LR(1)
-                theta = 0.0_f8
-                call Jacobi2Bond(Z, r, theta, atomMass(2), atomMass(3), bond)
-                call POT0(1, Vdia, bond)
-                call setPot_vj0(r, VBC)
-                lr_Vdia(iZ) = min((Vdia(1,1)-VBC), VMaxCut)
-                call BinReadWrite(fileName, lr_Vdia, 'write')
+                do ir = 1, IALR%vlr
+                    r = r_LR(ir)
+                    theta = 0.0_f8
+                    call Jacobi2Bond(Z, r, theta, atomMass(2), atomMass(3), bond)
+                    call POT0(1, Vdia, bond)
+                    call setPot_vj0(r, VBC)
+                    lr_Vdia(iZ, ir) = min((Vdia(1,1)-VBC), VMaxCut)
+                end do 
             end do
+            call BinReadWrite(fileName, lr_Vdia, 'write')
         else if (trim(potentialType) == 'Read') then
             call BinReadWrite(fileName, lr_Vdia, 'read')
             write(outFileUnit,'(1x,a,a)') 'Read lr_Vdia in file: ', trim(fileName)

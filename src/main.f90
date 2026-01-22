@@ -13,9 +13,9 @@ program IALR_WP_CRWP
     call setBasis()
     call setInitTotWP()
     call setEnergyAM()
+    call initAllVabs()
     call initRCB()
     call HamiltonianScale()
-    call initAllVabs()
     call propProcess()
 
 

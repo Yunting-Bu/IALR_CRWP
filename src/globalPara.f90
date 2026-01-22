@@ -29,7 +29,7 @@ module m_gPara
 
     type :: IALR_class
         integer :: nZ_IALR, nZ_IA, nZ_I, nr_DVR
-        integer :: vint, jint, vasy, jasy 
+        integer :: vint, jint, vasy, jasy, vlr 
         integer :: int_nA, asy_nA
         real(f8) :: Z_range(2), r_range(2)
     end type IALR_class
@@ -43,13 +43,13 @@ module m_gPara
     type :: channel1_class
         integer :: nr, vmax, jmax, jpar, ichoice 
         real(f8) :: r_range(2), Zinf, massAB, massTot
-        integer :: jmin, jinc, Kmin, njK
+        integer :: jmin, jinc, Kmin, njK, nIC
     end type channel1_class
 
     type :: channel2_class
         integer :: nr, vmax, jmax, jpar, ichoice
         real(f8) :: r_range(2), Zinf, massAC, massTot
-        integer :: jmin, jinc, Kmin, njK
+        integer :: jmin, jinc, Kmin, njK, nIC
     end type channel2_class
 
 !> ========== Parameters from input file ==========
@@ -76,12 +76,6 @@ module m_gPara
 !> Inelastic
     logical :: IF_inelastic
     real(f8) :: inePos
-!    real(f8), allocatable :: k_ine(:,:)
-!    real(f8), allocatable :: qn_l(:)
-!    real(f8), allocatable :: int_qn_l(:)
-!    real(f8), allocatable :: SF2BFMat(:,:)
-!    complex(f8), allocatable :: ineAM(:,:)
-!    complex(f8), allocatable :: ineSmat(:,:)
 !> Flux
     character(len=1) :: IDflux
     integer :: iZFluxPos
@@ -108,7 +102,6 @@ module m_gPara
 !> I - interaction region
 !> A - asymptotic region
 !> LR - long range region
-!> B for DVR-FBR transformation matrix
 !> Interaction-Asympotic-Lonng-Range (IALR) range
 !> r3   |----|
 !> r2   |----|----|
@@ -121,18 +114,19 @@ module m_gPara
     real(f8), allocatable :: initGaussWP(:)
 !> r
     real(f8), allocatable :: r_Int(:), r_Asy(:), r_LR(:)
-    real(f8), allocatable :: int_POWF(:,:), asy_POWF(:,:)
-    real(f8), allocatable :: int_PO2FBR(:,:), asy_PO2FBR(:,:), int_POEig(:)
+    real(f8), allocatable :: int_POWF(:,:), asy_POWF(:,:), lr_POWF(:,:)
+    real(f8), allocatable :: int_PO2FBR(:,:), asy_PO2FBR(:,:), lr_PO2FBR(:,:)
+    real(f8), allocatable :: int_POEig(:)
 !> Vabs
-    real(f8), allocatable :: asy_ZFabs(:), lr_ZFabs(:), int_rFabs(:), int_ZFabs(:) 
+    real(f8), allocatable :: asy_ZFabs(:), lr_ZFabs(:), int_rFabs(:)
 !> Hamiltonian matrix
     real(f8), allocatable :: int_ZkinMat(:), asy_ZkinMat(:), lr_ZkinMat(:)
-    real(f8), allocatable :: int_rKinMat(:), asy_rKinMat(:), lr_rKinMat
-    real(f8), allocatable :: int_kinEigen(:,:), asy_kinEigen(:,:), lr_kinEigen(:)
-    real(f8), allocatable :: int_rotMat(:,:), asy_rotMat(:,:), lr_rotMat(:)
+    real(f8), allocatable :: int_rKinMat(:), asy_rKinMat(:), lr_rKinMat(:)
+    real(f8), allocatable :: int_kinEigen(:,:), asy_kinEigen(:,:), lr_kinEigen(:,:)
+    real(f8), allocatable :: int_rotMat(:,:), asy_rotMat(:,:), lr_rotMat(:,:)
     real(f8), allocatable :: IA_CPMat(:,:,:), lr_CPMat(:,:,:)
 !> Interaction potential matrix and diabatic-to-adiabatic transformation matrix
-    real(f8), allocatable :: int_Vdia(:,:,:,:,:), asy_Vdia(:,:,:,:,:), lr_Vdia(:)
+    real(f8), allocatable :: int_Vdia(:,:,:,:,:), asy_Vdia(:,:,:,:,:), lr_Vdia(:,:)
 !> DFFT 
     integer :: int_nsZ, asy_nsZ, lr_nsZ
     real(f8), allocatable :: int_WSaveZ(:,:), asy_WSaveZ(:,:), lr_WSaveZ(:)
@@ -142,21 +136,36 @@ module m_gPara
     real(f8), allocatable :: int_TDWPm(:,:,:,:)
     real(f8), allocatable :: asy_TDWP(:,:,:,:)
     real(f8), allocatable :: asy_TDWPm(:,:,:,:)
-    real(f8), allocatable :: lr_TDWP(:,:)
-    real(f8), allocatable :: lr_TDWPm(:,:)
-    complex(c8), allocatable :: asy_TIDWF(:,:,:)
+    real(f8), allocatable :: lr_TDWP(:,:,:,:)
+    real(f8), allocatable :: lr_TDWPm(:,:,:,:)
+    complex(c8), allocatable :: intAB_TIDWF(:,:,:,:)
+    complex(c8), allocatable :: intAC_TIDWF(:,:,:,:)
 !> Chebyshev 
     real(f8) :: Hplus, Hminus
     real(f8), allocatable :: ChebyAngle(:)
 !> For match S-matrix
     real(f8), allocatable :: ineBC_ovlp(:,:)
+!> RCB intermediate coordinates
+!> 1 - Z_r/r_r, 2 - rij/Zij, 2 - costheta_r
+!> 4 - r_p, 5 - costheta_p, 6 - beta, 7 - gij
+    real(f8), allocatable :: InterCoor_AB(:,:), InterCoor_AC(:,:)
+!> 1 - iZ/ir, 2 - ith
+    integer, allocatable :: idXY_AB(:,:), idXY_AC(:,:)
 !> RCB Uij matrices 
-    real(f8), allocatable :: Uij_AB(:,:,:), Uij_AC(:,:,:)
+    real(f8), allocatable :: Uij_AB(:,:), Uij_AC(:,:)
 !> AB and AC jK pair
     integer, allocatable :: AB_jKPair(:,:), AC_jKPair(:,:)
     integer, allocatable :: AB_seqjK(:,:), AC_seqjK(:,:)
 !> Product vib-rotational WF in intermediate coordinates, IC for interCoor
-    real(f8), allocatable :: ICWFvj_AB(:,:,:,:,:), ICWFvj_AC(:,:,:,:,:)
+    real(f8), allocatable :: ICWFvj_AB(:,:,:,:), ICWFvj_AC(:,:,:,:)
+!> AtDMat for product channels
+    real(f8), allocatable :: AtDMat_AB(:,:,:), AtDMat_AC(:,:,:)
+!> Trans matrix from Ka to Kb
+    real(f8), allocatable :: TKMat_AB(:,:,:), TKMat_AC(:,:,:)
+!> Orbital angular momentum in product channels
+    integer, allocatable :: qn_l_AB(:), qn_l_AC(:)
+!> SF to BF transformation matrix in product channels
+    real(f8), allocatable :: BLK_AB(:,:), BLK_AC(:,:)
 !> Tpyes declarations
     type(initWP_class) :: initWP
     type(IALR_class) :: IALR 
