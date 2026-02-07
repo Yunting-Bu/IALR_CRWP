@@ -21,6 +21,13 @@ contains
                               * dsqrt(Z_IALR(2)-Z_IALR(1))
         end do 
 
+!        an = 0.0_f8
+!        do iZ = 1, IALR%nZ_IALR
+!            an = an + initGaussWP(iZ)*initGaussWP(iZ)
+!        end do 
+
+!        initGaussWP(:) = initGaussWP(:) / dsqrt(an)
+
     end subroutine Z_initGaussWP
 !> ------------------------------------------------------------------------------------------------------------------ <!
 

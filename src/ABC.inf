@@ -2,80 +2,80 @@
 
 ! Task types for the calculation
 &task
-    nChannel           = 2                          ! Number of reactive channels
+    nChannel           = 1                          ! Number of reactive channels
     IF_inelastic       = .true.                     ! Inelastic calculation flag  
     inePos             = 25.0                        ! Projection plane for inelastic
-    Atoms              = 'D', 'H', 'H'              ! Atoms, A B C order 
+    Atoms              = 'F', 'H', 'H'              ! Atoms, A B C order 
     nPES               = 1                          ! Number of PESs
     energyUnit         = 2                          ! Energy unit: 1 for cm-1, 2 for eV, 3 for Kelvin, 4 for Hartree
     IDflux             = 'Z'                        ! Flux analysis at which channel, 'r' for product and 'Z' for reactant, 'N' for no flux 
     fluxPos            = 20.0                       ! Where analysis flux
     potentialType      = 'New'                      ! Potential type: Read or New
-    outfile            = 'HHD'                      ! Output file name (.out, don't need to add extension)
+    outfile            = 'FHH'                      ! Output file name (.out, don't need to add extension)
 /    
 
 ! Parameters for initial wave packet
 &initWavePacket
-    initWP%j0                 = 0                          ! Initial rotational quantum number
+    initWP%j0                 = 1                          ! Initial rotational quantum number
     initWP%v0                 = 0                          ! Initial vibrational quantum number
-    initWP%l0                 = 0                          ! Initial orbital angular momentum quantum number
+    initWP%l0                 = 1                          ! Initial orbital angular momentum quantum number
     initWP%Jtot               = 0                          ! Total angular momentum
     initWP%tpar               = 1                          ! Total parity
-    initWP%jpar               = 0                          ! Rotational parity
-    initWP%Zc                 = 45.0                      ! Initial center of WP
-    initWP%delta              = 0.5                        ! Initial width of WP
-    initWP%Ec                 = 0.5                        ! Initial kinetic energy of WP
+    initWP%jpar               = -1                          ! Rotational parity
+    initWP%Zc                 = 115.0                      ! Initial center of WP
+    initWP%delta              = 0.8                        ! Initial width of WP
+    initWP%Ec                 = 5.0d-7                        ! Initial kinetic energy of WP
     initWP%PES0               = 1                          ! Initial PES index
 /
 
 ! Parameters for IALR
 &IALRset
-    IALR%Z_range             = 0.1, 300.0                ! Z grid range (I+A+lr)
-    IALR%nZ_IALR             = 2999                      ! Number of Z grid points (I+A+lr)
-    IALR%nZ_IA               = 399                        ! Number of Z grid points for asymptotic + interaction region
-    IALR%nZ_I                = 98                         ! Number of Z grid points for interaction region
+    IALR%Z_range             = 1.0, 240.0                ! Z grid range (I+A+lr)
+    IALR%nZ_IALR             = 2047                      ! Number of Z grid points (I+A+lr)
+    IALR%nZ_IA               = 295                        ! Number of Z grid points for asymptotic + interaction region
+    IALR%nZ_I                = 62                         ! Number of Z grid points for interaction region
     IALR%r_range             = 0.6, 12.0                   ! r grid range
-    IALR%vint                = 200                         ! Number of v for interaction region
-    IALR%jint                = 70                         ! Number of j for interaction region
-    IALR%vasy                = 10                         ! Number of v for asymptotic region
+    IALR%vint                = 120                         ! Number of v for interaction region
+    IALR%jint                = 90                         ! Number of j for interaction region
+    IALR%vasy                = 5                         ! Number of v for asymptotic region
     IALR%jasy                = 30                         ! Number of j for asymptotic region
-    IALR%nr_DVR              = 400                         ! Number of r grid points for DVR
+    IALR%nr_DVR              = 300                         ! Number of r grid points for DVR
 /
 
 ! Parameters for propagation
 &propagation
-    timeTot           = 1000                     ! Total propagation time
+    timeTot           = 20000                     ! Total propagation time
     timePrint         = 1000                        ! Time interval for printing
 /
 
 ! Energy 
 &energy
-    E_range           = 0.01, 0.1                   ! Energy range
-    dE                = 0.01                        ! Energy step
+    E_range           = 1.0d-7, 1.0d-6                   ! Energy range
+    dE                = 1.0d-7                        ! Energy step
     TMaxCut           = 2.0                         ! The cut energy of CPE, rot and kinetic
     VMaxCut           = 2.5                         ! The cut energy of Vpot
 /
 
 ! Absorbing potential parameters
 &VabsAndDump
-    Vabs%Zasy_range        = 20.0                        ! Z grid range for asymptotic absorbing potential
+    Vabs%Zasy_range        = 4.0                        ! Z grid range for asymptotic absorbing potential
     Vabs%Casy              = 0.01                       ! Coefficient for asymptotic absorbing potential
-    Vabs%Zlr_range         = 50.0                      ! Z grid range for long-range absorbing potential
+    Vabs%Zlr_range         = 120.0                      ! Z grid range for long-range absorbing potential
     Vabs%Clr               = 0.0001                     ! Coefficient for long-range absorbing potential
     Vabs%Zint_range        = 8.0                         ! Z grid range for radial absorbing potential
     Vabs%Cint              = 0.03                        ! Coefficient for radial absorbing potential
-    Vabs%rabs_range        = 8.5                         ! r grid range for radial absorbing potential
-    Vabs%Cr                = 0.01                        ! Coefficient for radial absorbing potential
+    Vabs%rabs_range        = 2                         ! r grid range for radial absorbing potential
+    Vabs%Cr                = 0.005                        ! Coefficient for radial absorbing potential
 /
 
 ! Parameters for channel 1 : C+AB
 &productChannel1
-    channel1%r_range          = 0.7, 4.5                    ! r grid range for product 1
+    channel1%r_range          = 0.6, 8.0                    ! r grid range for product 1
     channel1%nr               = 300                         ! Number of r grid points for product 1
-    channel1%vmax             = 5                          ! Maximum vibrational quantum number for product 1
+    channel1%vmax             = 3                          ! Maximum vibrational quantum number for product 1
     channel1%jmax             = 25                          ! Maximum rotational quantum number for product 1
     channel1%jpar              = 0                           ! Rotational parity for product 1
-    channel1%Zinf              = 6.0                        ! Projection plane for product 1
+    channel1%Zinf              = 15.0                        ! Projection plane for product 1
     channel1%ichoice           = 2                           ! Intermediate coordinate choice for product 1
 /
 

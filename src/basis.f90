@@ -125,7 +125,7 @@ contains
                     write(outFileUnit,*) 'POSITION: basis.f90, subroutine setA_DVR2FBR()'
                     stop
                 end if
-                A_DVR2FBR(ijK,ith) = spgndr(j,K,ANode(ith)) * dsqrt(AWeight(ith))
+                A_DVR2FBR(ith,ijK) = spgndr(j,K,ANode(ith)) * dsqrt(AWeight(ith))
             end do
         end do
     end subroutine setA_DVR2FBR
@@ -214,13 +214,13 @@ contains
 
 !> theta grid and weight
 !> asymptotic region
-        IALR%asy_nA = IALR%jasy / initWP%jinc + 1
+        IALR%asy_nA = asy_njK
         allocate(asy_ANode(IALR%asy_nA), asy_AWeight(IALR%asy_nA))
         call setANodeAndWeight(initWP%jpar, IALR%asy_nA, asy_ANode, asy_AWeight)
         allocate(asy_YMat(IALR%asy_nA, asy_njK))
         call setA_DVR2FBR(asy_njK, IALR%asy_nA, asy_jKPair, asy_ANode, asy_AWeight, asy_YMat)
 !> interaction region
-        IALR%int_nA = IALR%jint / initWP%jinc + 1
+        IALR%int_nA = int_njK
         allocate(int_ANode(IALR%int_nA), int_AWeight(IALR%int_nA))
         call setANodeAndWeight(initWP%jpar, IALR%int_nA, int_ANode, int_AWeight)
         allocate(int_YMat(IALR%int_nA, int_njK))
@@ -435,32 +435,36 @@ contains
         integer, intent(in) :: nZ, nr, njK
         real(f8), intent(in) :: BMat(nr,nr)
         real(f8), intent(inout) :: auxWP(:,:,:,:), WP(:,:,:,:), WPm(:,:,:,:)
-        integer :: ijK
+        integer :: ijK, iPES
 
         if (trim(type) == 'DVR2FBR') then 
-!$OMP parallel do default(shared) private(ijK)
-            do ijK = 1, njK
-                call dgemm('N', 'T', nZ, nr, nr, &
-                            1.0_f8, WP(1,1,ijK,1), nZ, BMat, nr, &
-                            0.0_f8, auxWP(1,1,ijK,1), nZ)
-                call dcopy(nr*nZ, auxWP(1,1,ijK,1), 1, WP(1,1,ijK,1), 1)
-                call dgemm('N', 'T', nZ, nr, nr, &
-                            1.0_f8, WPm(1,1,ijK,1), nZ, BMat, nr, &
-                            0.0_f8, auxWP(1,1,ijK,1), nZ)
-                call dcopy(nr*nZ, auxWP(1,1,ijK,1), 1, WPm(1,1,ijK,1), 1)
+!$OMP parallel do default(shared) private(ijK,iPES) collapse(2)
+            do iPES = 1, nPES
+                do ijK = 1, njK
+                    call dgemm('N', 'T', nZ, nr, nr, &
+                                1.0_f8, WP(1,1,ijK,iPES), nZ, BMat, nr, &
+                                0.0_f8, auxWP(1,1,ijK,iPES), nZ)
+                    call dcopy(nr*nZ, auxWP(1,1,ijK,iPES), 1, WP(1,1,ijK,iPES), 1)
+                    call dgemm('N', 'T', nZ, nr, nr, &
+                                1.0_f8, WPm(1,1,ijK,iPES), nZ, BMat, nr, &
+                                0.0_f8, auxWP(1,1,ijK,iPES), nZ)
+                    call dcopy(nr*nZ, auxWP(1,1,ijK,iPES), 1, WPm(1,1,ijK,iPES), 1)
+                end do
             end do
 !$OMP end parallel do
         else if (trim(type) == 'FBR2DVR') then
-!$OMP parallel do default(shared) private(ijK)
-            do ijK = 1, njK
-                call dgemm('N', 'N', nZ, nr, nr, &
-                            1.0_f8, WP(1,1,ijK,1), nZ, BMat, nr, &
-                            0.0_f8, auxWP(1,1,ijK,1), nZ)
-                call dcopy(nr*nZ, auxWP(1,1,ijK,1), 1, WP(1,1,ijK,1), 1)
-                call dgemm('N', 'N', nZ, nr, nr, &
-                            1.0_f8, WPm(1,1,ijK,1), nZ, BMat, nr, &
-                            0.0_f8, auxWP(1,1,ijK,1), nZ)
-                call dcopy(nr*nZ, auxWP(1,1,ijK,1), 1, WPm(1,1,ijK,1), 1)
+!$OMP parallel do default(shared) private(ijK,iPES) collapse(2)
+            do iPES = 1, nPES
+                do ijK = 1, njK
+                    call dgemm('N', 'N', nZ, nr, nr, &
+                                1.0_f8, WP(1,1,ijK,iPES), nZ, BMat, nr, &
+                                0.0_f8, auxWP(1,1,ijK,iPES), nZ)
+                    call dcopy(nr*nZ, auxWP(1,1,ijK,iPES), 1, WP(1,1,ijK,iPES), 1)
+                    call dgemm('N', 'N', nZ, nr, nr, &
+                                1.0_f8, WPm(1,1,ijK,iPES), nZ, BMat, nr, &
+                                0.0_f8, auxWP(1,1,ijK,iPES), nZ)
+                    call dcopy(nr*nZ, auxWP(1,1,ijK,iPES), 1, WPm(1,1,ijK,iPES), 1)
+                end do
             end do
 !$OMP end parallel do
         else

@@ -157,7 +157,8 @@ contains
         nabs = 0
         do i = 1, nGird
             if (grid(i) >= rangeNoAbs) then
-                VabsMat(i) = dexp(-Cabs * ((grid(i)-rangeNoAbs)/(rangeAll - rangeNoAbs))**2)
+                !VabsMat(i) = dexp(-Cabs * ((grid(i)-rangeNoAbs)/(rangeAll - rangeNoAbs))**2)
+                VabsMat(i) = dexp(-Cabs * ((grid(i)-rangeNoAbs)**2))
             else
                 VabsMat(i) = 1.0_f8
                 nabs = i
@@ -191,6 +192,7 @@ contains
         allocate(lr_ZFabs(IALR%nZ_IALR))
         write(outFileUnit,'(1x,a)') 'Absorbing potential in Z_lr:'
         call setVabs(Vabs%Zlr_range,Vabs%Clr,IALR%nZ_IALR,Z_IALR,Vabs%nZlr,lr_ZFabs)
+        write(102,*) lr_ZFabs
 !> Vabs in asymptotic
         allocate(asy_ZFabs(IALR%nZ_IA))
         write(outFileUnit,'(1x,a)') 'Absorbing potential in Z_asy:'

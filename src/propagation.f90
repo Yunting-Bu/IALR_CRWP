@@ -13,6 +13,9 @@ module m_Prop
     real(f8), allocatable, private :: int_auxWP(:,:,:,:)
     real(f8), allocatable, private :: asy_auxWP(:,:,:,:)
     real(f8), allocatable, private :: lr_auxWP(:,:,:,:)
+!> VAction tmp arrays
+    real(f8), allocatable, private :: asy_Vtmp(:,:), int_Vtmp(:,:)
+    real(f8) :: t1, t2
 
     public
     private :: ChebyshevRecursion, setTIDWF, totHamAction
@@ -34,6 +37,8 @@ contains
         allocate(int_auxWP(IALR%nZ_I, IALR%vint, int_njMax, nPES))
         allocate(asy_auxWP(IALR%nZ_IA, IALR%vasy, asy_njMax, nPES))
         allocate(lr_auxWP(IALR%nZ_IALR, IALR%vlr, lr_njK, 1))
+        allocate(int_Vtmp(nPES,IALR%int_nA))
+        allocate(asy_Vtmp(nPES,IALR%asy_nA))
 
 !> k = 0, |\phi>_0 = |initWP>
         lr_TDWPm = lr_TDWP; lr_TDWP = 0.0_f8
@@ -85,6 +90,7 @@ contains
         integer, intent(in) :: iStep
         real(f8) :: WFtmp, fact, VabsTmp 
         integer :: iPES, ir, iZ, ijK, j 
+        logical :: is_init_channel
 
 !> Hamiltonian action
         call totHamAction()
@@ -96,8 +102,10 @@ contains
             fact = 0.5_f8
         end if
 !> Long range region
+!$OMP parallel do default(shared) private(ijK,ir,iZ,WFtmp)
         do ijK = 1, lr_njK
             do ir = 1, IALR%vlr
+!$OMP SIMD
                 do iZ = IALR%nZ_IA+1, IALR%nZ_IALR
                     WFtmp = fact*lr_TDWPm(iZ,ir,ijK,1)
                     lr_TDWPm(iZ,ir,ijK,1) = 2.0_f8*lr_TDWP(iZ,ir,ijK,1)*lr_ZFabs(iZ)
@@ -105,49 +113,74 @@ contains
                 end do
             end do
         end do
+!$OMP end parallel do
+
 !> Asymptotic region
         do iPES = 1, nPES
-!$OMP parallel do default(shared) private(ijK,ir,iZ,j,VabsTmp,WFtmp)
+!$OMP parallel do default(shared) private(ijK,ir,iZ,j,VabsTmp,WFtmp,is_init_channel)
             do ijK = 1, asy_njK
+                j = asy_jKPair(ijK,1)
+                is_init_channel = (iPES == initWP%PES0 .and. j == initWP%j0)
                 do ir = 1, IALR%vasy
-                    do iZ = IALR%nZ_I+1, IALR%nZ_IA
-                        j = asy_jKPair(ijK,1)
-                        if (iPES == initWP%PES0 .and. j == initWP%j0 .and. ir == initWP%v0+1) then
-                            VabsTmp = 1.0_f8
-                        else
+                    if (is_init_channel .and. ir == initWP%v0+1) then
+!$OMP SIMD
+                        do iZ = IALR%nZ_I+1, IALR%nZ_IA
+                            WFtmp = fact*asy_TDWPm(iZ,ir,ijK,iPES)
+                            asy_TDWPm(iZ,ir,ijK,iPES) = 2.0_f8*asy_TDWP(iZ,ir,ijK,iPES)
+                            asy_TDWP(iZ,ir,ijK,iPES) = -WFtmp
+                        end do
+                    else
+!$OMP SIMD
+                        do iZ = IALR%nZ_I+1, IALR%nZ_IA
                             VabsTmp = asy_ZFabs(iZ)
-                        end if
-                        WFtmp = fact*asy_TDWPm(iZ,ir,ijK,iPES)
-                        asy_TDWPm(iZ,ir,ijK,iPES) = 2.0_f8*asy_TDWP(iZ,ir,ijK,iPES)*VabsTmp
-                        asy_TDWP(iZ,ir,ijK,iPES) = -WFtmp*VabsTmp
-                    end do
+                            WFtmp = fact*asy_TDWPm(iZ,ir,ijK,iPES)
+                            asy_TDWPm(iZ,ir,ijK,iPES) = 2.0_f8*asy_TDWP(iZ,ir,ijK,iPES)*VabsTmp
+                            asy_TDWP(iZ,ir,ijK,iPES) = -WFtmp*VabsTmp
+                        end do
+                    end if
                 end do
             end do
 !$OMP end parallel do
         end do
 !> Interaction region
-!        do iPES = 1, nPES
-!!$OMP parallel do default(shared) private(ijK,ir,iZ,j,VabsTmp,WFtmp)
-!            do ijK = 1, int_njK
-!                do ir = 1, IALR%vint
-!                    do iZ = 1, IALR%nZ_I
-!                        j = int_jKPair(ijK,1)
-!                        if (iPES == initWP%PES0 .and. j == initWP%j0 .and. ir == initWP%v0+1) then
-!                            VabsTmp = 1.0_f8
-!                        else if (r_Int(ir) <= r_Asy(IALR%vasy)) then
-!                            VabsTmp = 1.0_f8
-!                        else
-!                            VabsTmp = int_ZFabs(iZ)
-!                        end if
-!                        WFtmp = fact*int_TDWPm(iZ,ir,ijK,iPES)
-!                        int_TDWPm(iZ,ir,ijK,iPES) = 2.0_f8*int_TDWP(iZ,ir,ijK,iPES)*VabsTmp
-!                        int_TDWP(iZ,ir,ijK,iPES) = -WFtmp*VabsTmp
-!                    end do
-!                end do
-!            end do
-!!$OMP end parallel do
-!        end do
-        
+        do iPES = 1, nPES
+!$OMP parallel do default(shared) private(ijK,ir,iZ,j,VabsTmp,WFtmp,is_init_channel)
+            do ijK = 1, int_njK
+                j = int_jKPair(ijK,1)
+                is_init_channel = (iPES == initWP%PES0 .and. j == initWP%j0)
+                do ir = 1, IALR%vint
+                    ! Determine absorption mode for the whole iZ loop
+                    if (is_init_channel .and. ir == initWP%v0+1) then
+                        ! Mode 1: lr_ZFabs
+!$OMP SIMD
+                        do iZ = 1, IALR%nZ_I
+                            VabsTmp = lr_ZFabs(iZ)
+                            WFtmp = fact*int_TDWPm(iZ,ir,ijK,iPES)
+                            int_TDWPm(iZ,ir,ijK,iPES) = 2.0_f8*int_TDWP(iZ,ir,ijK,iPES)*VabsTmp
+                            int_TDWP(iZ,ir,ijK,iPES) = -WFtmp*VabsTmp
+                        end do
+                    else if (r_Int(ir) <= r_Asy(IALR%vasy)) then
+                        ! Mode 2: asy_ZFabs
+!$OMP SIMD
+                        do iZ = 1, IALR%nZ_I
+                            VabsTmp = asy_ZFabs(iZ)
+                            WFtmp = fact*int_TDWPm(iZ,ir,ijK,iPES)
+                            int_TDWPm(iZ,ir,ijK,iPES) = 2.0_f8*int_TDWP(iZ,ir,ijK,iPES)*VabsTmp
+                            int_TDWP(iZ,ir,ijK,iPES) = -WFtmp*VabsTmp
+                        end do
+                    else
+                        ! Mode 3: 1.0
+!$OMP SIMD
+                        do iZ = 1, IALR%nZ_I
+                            WFtmp = fact*int_TDWPm(iZ,ir,ijK,iPES)
+                            int_TDWPm(iZ,ir,ijK,iPES) = 2.0_f8*int_TDWP(iZ,ir,ijK,iPES)
+                            int_TDWP(iZ,ir,ijK,iPES) = -WFtmp
+                        end do
+                    end if
+                end do
+            end do
+!$OMP end parallel do
+        end do
     end subroutine ChebyshevRecursion
 !> ------------------------------------------------------------------------------------------------------------------ <!
 
@@ -164,15 +197,6 @@ contains
 
         FourierFactor(:) = (2.0_f8, 0.0_f8) * exp(cmplx(0.0_f8,-iStep*ChebyAngle(:), kind=c8))
 
-        !> Trans angle FBR to DVR 
-        do iPES = 1, nPES
-            call dgemm('N','T',IALR%nZ_I*IALR%vint,&
-                        IALR%int_nA,int_njK,&
-                        1.0_f8,int_TDWPm(1,1,1,iPES),IALR%nZ_I*IALR%vint, &
-                        int_YMat(1,1),IALR%int_nA,&
-                        0.0_f8,int_auxWP(1,1,1,iPES),IALR%nZ_I*IALR%vint)
-        end do
-
         if (type == 'A+BC->C+AB') then 
             nIC = channel1%nIC
         else if (type == 'A+BC->B+AC') then
@@ -180,14 +204,16 @@ contains
         end if
 
         if (ichoice == 1) then 
+!$OMP parallel do default(shared) private(iPES,iIC,iZ,ith,ir,tmp,iEtot) collapse(2)
             do iPES = 1, nPES
                 do iIC = 1, nIC
-                    if (type == 'A+BC->C+AB') then
+                    if (type == 'A+BC->C+AB') then 
                         iZ = idXY_AB(iIC,1)
                         ith = idXY_AB(iIC,2) 
                         tmp = 0.0_f8
+!$OMP SIMD reduction(+:tmp)
                         do ir = 1, IALR%vint 
-                            tmp = tmp + Uij_AB(ir,iIC)*int_auxWP(iZ,ir,ith,iPES)
+                            tmp = tmp + Uij_AB(ir,iIC)*dot_product(int_TDWPm(iZ,ir,:,iPES),int_YMat(ith,:))
                         end do 
                         do iEtot = 1, nEtot
                             intAB_TIDWF(iIC,:,iPES,iEtot) = intAB_TIDWF(iIC,:,iPES,iEtot) + &
@@ -197,8 +223,9 @@ contains
                         iZ = idXY_AC(iIC,1)
                         ith = idXY_AC(iIC,2)
                         tmp = 0.0_f8
+!$OMP SIMD reduction(+:tmp)
                         do ir = 1, IALR%vint 
-                            tmp = tmp + Uij_AC(ir,iIC)*int_auxWP(iZ,ir,ith,iPES)
+                            tmp = tmp + Uij_AC(ir,iIC)*dot_product(int_TDWPm(iZ,ir,:,iPES),int_YMat(ith,:))
                         end do 
                         do iEtot = 1, nEtot
                             intAC_TIDWF(iIC,:,iPES,iEtot) = intAC_TIDWF(iIC,:,iPES,iEtot) + &
@@ -207,15 +234,18 @@ contains
                     end if
                 end do
             end do
+!$OMP end parallel do
         else if (ichoice == 2) then
+!$OMP parallel do default(shared) private(iPES,iIC,iZ,ir,ith,tmp,iEtot) collapse(2)
             do iPES = 1, nPES
                 do iIC = 1, nIC 
                     if (type == 'A+BC->C+AB') then 
                         ir = idXY_AB(iIC,1)
                         ith = idXY_AB(iIC,2)
                         tmp = 0.0_f8
+!$OMP SIMD reduction(+:tmp)
                         do iZ = 1, IALR%nZ_I 
-                            tmp = tmp + Uij_AB(iZ,iIC)*int_auxWP(iZ,ir,ith,iPES)
+                            tmp = tmp + Uij_AB(iZ,iIC)*dot_product(int_TDWPm(iZ,ir,:,iPES),int_YMat(ith,:))
                         end do 
                         do iEtot = 1, nEtot
                             intAB_TIDWF(iIC,:,iPES,iEtot) = intAB_TIDWF(iIC,:,iPES,iEtot) + &
@@ -225,8 +255,9 @@ contains
                         ir = idXY_AC(iIC,1)
                         ith = idXY_AC(iIC,2)
                         tmp = 0.0_f8
+!$OMP SIMD reduction(+:tmp)
                         do iZ = 1, IALR%nZ_I 
-                            tmp = tmp + Uij_AC(iZ,iIC)*int_auxWP(iZ,ir,ith,iPES)
+                            tmp = tmp + Uij_AC(iZ,iIC)*dot_product(int_TDWPm(iZ,ir,:,iPES),int_YMat(ith,:))
                         end do 
                         do iEtot = 1, nEtot
                             intAC_TIDWF(iIC,:,iPES,iEtot) = intAC_TIDWF(iIC,:,iPES,iEtot) + &
@@ -235,6 +266,7 @@ contains
                     end if
                 end do
             end do
+!$OMP end parallel do
         end if
 
     end subroutine setTIDWF
@@ -243,7 +275,7 @@ contains
 !> ------------------------------------------------------------------------------------------------------------------ <!
     subroutine totHamAction()
         implicit none
-        integer :: iPES, ir
+        integer :: iPES, ir, ijKi, iZ 
         
 !>  r in FBR and Z in DVR now 
         call kinAction()
@@ -261,11 +293,15 @@ contains
         call rotAction()
 
 !> Dumping for interaction region
-!$OMP parallel do default(shared) private(iPES,ir)
+!$OMP parallel do default(shared) private(iPES,ir,ijKi,iZ)
         do iPES = 1, nPES
-            do ir = 1, IALR%vint
-                int_TDWP(:,ir,:,iPES) = int_TDWP(:,ir,:,iPES)*int_rFabs(ir)
-                int_TDWPm(:,ir,:,iPES) = int_TDWPm(:,ir,:,iPES)*int_rFabs(ir)
+            do ijKi = 1, int_njK
+                do ir = 1, IALR%vint
+                    do iZ = 1, IALR%nZ_I
+                        int_TDWP(iZ,ir,ijKi,iPES) = int_TDWP(iZ,ir,ijKi,iPES)*int_rFabs(ir)
+                        int_TDWPm(iZ,ir,ijKi,iPES) = int_TDWPm(iZ,ir,ijKi,iPES)*int_rFabs(ir)
+                    end do
+                end do
             end do
         end do
 !$OMP end parallel do
@@ -291,17 +327,20 @@ contains
             call dcopy(int_njK*IALR%vint*IALR%nZ_I,int_TDWPm(1,1,1,iPES),1,int_auxWP(1,1,1,iPES),1)
             call dcopy(asy_njK*IALR%vasy*IALR%nZ_IA,asy_TDWPm(1,1,1,iPES),1,asy_auxWP(1,1,1,iPES),1)
         end do 
-        call dcopy(lr_njK*IALR%vlr*IALR%nZ_IALR,lr_TDWPm,1,lr_auxWP,1)
+        call dcopy(lr_njK*IALR%vlr*IALR%nZ_IALR,lr_TDWPm(1,1,1,1),1,lr_auxWP(1,1,1,1),1)
 
 !> Copy int_auxWP to asy_auxWP
         do iPES = 1, nPES 
-            Kmax = min(IALR%jasy, initWP%Jtot)
-            do K = initWP%Kmin, Kmax 
+            do K = initWP%Kmin, min(IALR%jasy, initWP%Jtot)
                 do j = initWP%jmin, IALR%jasy, initWP%jinc 
                     if (j >= K) then 
                         idjKi = int_seqjK(j,K)
                         idjKa = asy_seqjK(j,K)
-                        asy_auxWP(1:IALR%nZ_I,1:IALR%vasy,idjKa,iPES) = int_auxWP(1:IALR%nZ_I,1:IALR%vasy,idjKi,iPES)
+                        do ir = 1, IALR%vasy
+                            do iZ = 1, IALR%nZ_I
+                                asy_auxWP(iZ,ir,idjKa,iPES) = int_auxWP(iZ,ir,idjKi,iPES)
+                            end do
+                        end do
                     end if
                 end do
             end do
@@ -313,7 +352,11 @@ contains
             if (initWP%j0 >= K) then 
                 idjKa  = asy_seqjK(initWP%j0,K)
                 idjKl = lr_seqjK(initWP%j0,K)
-                lr_auxWP(1:IALR%nZ_IA,1:IALR%vlr,idjKl,1) = asy_auxWP(1:IALR%nZ_IA,1:IALR%vlr,idjKa,initWP%PES0)
+                do ir = 1, IALR%vlr
+                    do iZ = 1, IALR%nZ_IA
+                        lr_auxWP(iZ,ir,idjKl,1) = asy_auxWP(iZ,ir,idjKa,initWP%PES0)
+                    end do
+                end do
             end if
         end do
 
@@ -323,7 +366,7 @@ contains
             do ir = 1, IALR%vlr
                 call dsint(IALR%nZ_IALR, lr_auxWP(1,ir,idjkl,1), lr_WSaveZ)
                 do iZ = 1, IALR%nZ_IALR
-                    lr_auxWP(iZ,ir,idjkl,1) = lr_kinEigen(iZ,ir) * lr_auxWP(iZ,ir,idjkl,1)
+                    lr_auxWP(iZ,ir,idjkl,1) = lr_kinEigen(iZ,ir)*lr_auxWP(iZ,ir,idjkl,1)
                 end do
                 call dsint(IALR%nZ_IALR, lr_auxWP(1,ir,idjkl,1), lr_WSaveZ)
             end do
@@ -365,18 +408,26 @@ contains
             if (initWP%j0 >= K) then 
                 idjKa  = asy_seqjK(initWP%j0,K)
                 idjKl = lr_seqjK(initWP%j0,K)
-                asy_auxWP(1:IALR%nZ_IA,1:IALR%vlr,idjKa,initWP%PES0) = lr_auxWP(1:IALR%nZ_IA,1:IALR%vlr,idjKl,1)
+                do ir = 1, IALR%vlr
+                    do iZ = 1, IALR%nZ_IA
+                        asy_auxWP(iZ,ir,idjKa,initWP%PES0) = lr_auxWP(iZ,ir,idjKl,1)
+                    end do
+                end do
             end if
         end do
+
 !> Copy asy_auxWP to int_auxWP
         do iPES = 1, nPES 
-            Kmax = min(IALR%jasy, initWP%Jtot)
-            do K = initWP%Kmin, Kmax 
+            do K = initWP%Kmin, min(IALR%jasy, initWP%Jtot)
                 do j = initWP%jmin, IALR%jasy, initWP%jinc 
                     if (j >= K) then 
                         idjKi = int_seqjK(j,K)
                         idjKa = asy_seqjK(j,K)
-                        int_auxWP(1:IALR%nZ_I,1:IALR%vasy,idjKi,iPES) = asy_auxWP(1:IALR%nZ_I,1:IALR%vasy,idjKa,iPES)
+                        do ir = 1, IALR%vasy
+                            do iZ = 1, IALR%nZ_I
+                                int_auxWP(iZ,ir,idjKi,iPES) = asy_auxWP(iZ,ir,idjKa,iPES)
+                            end do
+                        end do
                     end if
                 end do
             end do
@@ -387,7 +438,7 @@ contains
             call daxpy(int_njK*IALR%vint*IALR%nZ_I,1.0_f8,int_auxWP(1,1,1,iPES),1,int_TDWP(1,1,1,iPES),1)
             call daxpy(asy_njK*IALR%vasy*IALR%nZ_IA,1.0_f8,asy_auxWP(1,1,1,iPES),1,asy_TDWP(1,1,1,iPES),1)
         end do
-        call daxpy(lr_njK*IALR%vlr*IALR%nZ_IALR,1.0_f8,lr_auxWP,1,lr_TDWP,1)
+        call daxpy(lr_njK*IALR%vlr*IALR%nZ_IALR,1.0_f8,lr_auxWP(1,1,1,1),1,lr_TDWP(1,1,1,1),1)
 
     end subroutine kinAction
 !> ------------------------------------------------------------------------------------------------------------------ <!
@@ -396,30 +447,40 @@ contains
     subroutine CPAction()
         implicit none
         integer :: iPES, idjK, jdjK, idjKa, jdjKa
-        integer :: j, jstart, K, Kp, Kmax, iZ
+        integer :: j, jstart, K, Kp, Kmax, iZ, ir
 
 !> r in FBR, Z in DVR
         !> interaction region and asymptotic region
         do iPES = 1, nPES
-!$OMP parallel do default(shared) private(iZ,idjK,jdjK,j,K,Kp,idjKa,jdjKa)
+!$OMP parallel do default(shared) private(ir,iZ,idjK,jdjK,j,K,Kp,idjKa,jdjKa)
             do idjK = 1, int_njK
                 j = int_jKPair(idjK,1)
                 K = int_jKPair(idjK,2)
-                do jdjK = 1, int_njK
-                    if (int_jKPair(jdjK,1) /= j) cycle
-                    Kp = int_jKPair(jdjK,2)
-                    do iZ = 1, IALR%nZ_I
-                        int_TDWP(iZ,:,idjK,iPES) = int_TDWP(iZ,:,idjK,iPES) + &
-                                                    IA_CPMat(iZ,idjK,jdjK) * &
-                                                    int_TDWPm(iZ,:,jdjK,iPES)
+                
+                !> Loop over Kp for the same j block 
+                !> int_seqjK gives index jdjK. If 0, it means not in basis (though with block structure usually it is)
+                do Kp = initWP%Kmin, min(initWP%Jtot, j)
+                    jdjK = int_seqjK(j, Kp)
+                    if (jdjK <= 0 .or. jdjK > int_njK) cycle
+
+                    do ir = 1, IALR%vint
+!$OMP SIMD
+                        do iZ = 1, IALR%nZ_I
+                            int_TDWP(iZ,ir,idjK,iPES) = int_TDWP(iZ,ir,idjK,iPES) + &
+                                                        IA_CPMat(iZ,idjK,jdjK) * &
+                                                        int_TDWPm(iZ,ir,jdjK,iPES)
+                        end do
                     end do
                     if (j <= IALR%jasy) then 
                         idjKa = asy_seqjK(j,K)
                         jdjKa = asy_seqjK(j,Kp)
-                        do iZ = IALR%nZ_I+1, IALR%nZ_IA
-                            asy_TDWP(iZ,:,idjKa,iPES) = asy_TDWP(iZ,:,idjKa,iPES) + &
-                                                        IA_CPMat(iZ,idjKa,jdjKa) * &
-                                                        asy_TDWPm(iZ,:,jdjKa,iPES)
+                        do ir = 1, IALR%vasy
+!$OMP SIMD
+                            do iZ = IALR%nZ_I+1, IALR%nZ_IA
+                                asy_TDWP(iZ,ir,idjKa,iPES) = asy_TDWP(iZ,ir,idjKa,iPES) + &
+                                                            IA_CPMat(iZ,idjKa,jdjKa) * &
+                                                            asy_TDWPm(iZ,ir,jdjKa,iPES)
+                            end do
                         end do
                     end if
                 end do 
@@ -433,10 +494,13 @@ contains
             do K = initWP%Kmin, Kmax
                 idjK = lr_seqjK(initWP%j0,K)
                 jdjK = lr_seqjK(initWP%j0,Kp)
-                do iZ = 1, IALR%nZ_IALR
-                    lr_TDWP(iZ,:,idjK,1) = lr_TDWP(iZ,:,idjK,1) + &
-                                            lr_CPMat(iZ,idjK,jdjK) * &
-                                            lr_TDWPm(iZ,:,jdjK,1)
+                do ir = 1, IALR%vlr
+!$OMP SIMD
+                    do iZ = 1, IALR%nZ_IALR
+                        lr_TDWP(iZ,ir,idjK,1) = lr_TDWP(iZ,ir,idjK,1) + &
+                                                lr_CPMat(iZ,idjK,jdjK) * &
+                                                lr_TDWPm(iZ,ir,jdjK,1)
+                    end do
                 end do
             end do
         end do
@@ -452,10 +516,13 @@ contains
 !> r in DVR, Z in DVR 
         !> interaction region
         do iPES = 1, nPES
-!$OMP parallel do default(shared) private(idjK,ir)
+!$OMP parallel do default(shared) private(idjK,ir,iZ)
             do idjK = 1, int_njK
                 do ir  = 1, IALR%vint
-                    int_TDWP(:,ir,idjK,iPES) = int_rotMat(ir,idjK)*int_TDWPm(:,ir,idjK,iPES)+int_TDWP(:,ir,idjK,iPES)
+!$OMP SIMD
+                    do iZ = 1, IALR%nZ_I
+                        int_TDWP(iZ,ir,idjK,iPES) = int_rotMat(ir,idjK)*int_TDWPm(iZ,ir,idjK,iPES)+int_TDWP(iZ,ir,idjK,iPES)
+                    end do
                 end do
             end do
 !$OMP end parallel do
@@ -466,6 +533,7 @@ contains
 !$OMP parallel do default(shared) private(idjK,ir,iZ)
             do idjK = 1, asy_njK
                 do ir  = 1, IALR%vasy
+!$OMP SIMD
                     do iZ = IALR%nZ_I+1, IALR%nZ_IA
                         asy_TDWP(iZ,ir,idjK,iPES) = asy_rotMat(ir,idjK)*asy_TDWPm(iZ,ir,idjK,iPES)+asy_TDWP(iZ,ir,idjK,iPES)
                     end do
@@ -478,6 +546,7 @@ contains
 !$OMP parallel do default(shared) private(idjK,ir,iZ)
         do idjK = 1, lr_njK
             do ir = 1, IALR%vlr
+!$OMP SIMD
                 do iZ = IALR%nZ_IA+1, IALR%nZ_IALR
                     lr_TDWP(iZ,ir,idjK,1) = lr_rotMat(ir,idjK)*lr_TDWPm(iZ,ir,idjK,1)+lr_TDWP(iZ,ir,idjK,1)
                 end do
@@ -492,7 +561,6 @@ contains
         implicit none
         integer :: iPES, jPES, iZ, ir, ith
         real(f8) :: vtmp
-        real(f8), allocatable :: WFtmp(:,:)
         
 !> r in DVR, Z in DVR
 !> Trans angle FBR to DVR
@@ -510,7 +578,6 @@ contains
         end do
 
         !> interaction region
-        allocate(WFtmp(nPES,IALR%int_nA))
 !$OMP parallel  do default(shared) private(ith,ir,iZ,iPES,jPES,vtmp)
         do ith = 1, IALR%int_nA
             do ir  = 1, IALR%vint
@@ -520,11 +587,11 @@ contains
                         do jPES = 1, nPES
                             vtmp = vtmp + int_Vdia(jPES,iPES,iZ,ir,ith)*int_auxWP(iZ,ir,ith,jPES)
                         end do
-                        WFtmp(iPES,ith) = vtmp
-                    end do 
-                    do iPES = 1, nPES
-                        int_auxWP(iZ,ir,ith,iPES) = WFtmp(iPES,ith)
+                        int_Vtmp(iPES,ith) = vtmp
                     end do
+                    do iPES = 1, nPES
+                        int_auxWP(iZ,ir,ith,iPES) = int_Vtmp(iPES,ith)
+                    end do 
                 end do
             end do
         end do
@@ -537,10 +604,8 @@ contains
             int_YMat(1,1), IALR%int_nA, &
             1.0_f8, int_TDWP(1,1,1,iPES), IALR%nZ_I * IALR%vint )
         end do
-        deallocate(WFtmp)
 
         !> asymptotic region
-        allocate(WFtmp(nPES,IALR%asy_nA))
 !$OMP parallel  do default(shared) private(ith,ir,iZ,iPES,jPES,vtmp)
         do ith = 1, IALR%asy_nA
             do ir  = 1, IALR%vasy
@@ -550,10 +615,10 @@ contains
                         do jPES = 1, nPES
                             vtmp = vtmp + asy_Vdia(jPES,iPES,iZ-IALR%nZ_I,ir,ith)*asy_auxWP(iZ,ir,ith,jPES)
                         end do
-                        WFtmp(iPES,ith) = vtmp
+                        asy_Vtmp(iPES,ith) = vtmp
                     end do
                     do iPES = 1, nPES
-                        asy_auxWP(iZ,ir,ith,iPES) = WFtmp(iPES,ith)
+                        asy_auxWP(iZ,ir,ith,iPES) = asy_Vtmp(iPES,ith)
                     end do
                 end do
             end do
@@ -567,7 +632,6 @@ contains
             asy_YMat(1,1), IALR%asy_nA, &
             1.0_f8, asy_TDWP(1,1,1,iPES), IALR%nZ_IA * IALR%vasy )
         end do
-        deallocate(WFtmp)
 
         !> long range region
         do ith = 1, lr_njK
