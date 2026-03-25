@@ -17,11 +17,11 @@
 
 ! Parameters for initial wave packet
 &initWavePacket
-    initWP%j0                 = 2                          ! Initial rotational quantum number
+    initWP%j0                 = 0                          ! Initial rotational quantum number
     initWP%v0                 = 4                          ! Initial vibrational quantum number
-    initWP%l0                 = 2                          ! Initial orbital angular momentum quantum number
-    initWP%Jtot               = 0                          ! Total angular momentum
-    initWP%tpar               = 1                          ! Total parity
+    initWP%l0                 = 1
+    initWP%Jtot               = 1
+    initWP%tpar               = 1
     initWP%jpar               = 1                          ! Rotational parity
     initWP%Zc                 = 45.0                      ! Initial center of WP
     initWP%delta              = 1.2                        ! Initial width of WP

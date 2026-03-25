@@ -1,0 +1,132 @@
+  =====> Input parameters <======
+ 
+ Reaction Channel: A + BC -> AB + C           
+ Atoms A, B, C: D , H , H 
+ Reduced Masses of BC (a.u.):  918.576323683
+ Reduced Masses of ABC (a.u.): 1836.446787933
+ v0, j0, l0 :    4   0   1
+ Total angular momentum Jtot:    1
+ Total parity:    1
+ Number of PES:    1
+ Initial PES:    1
+ 
+ =====> Initail ro-vibrational state information <=====
+ 
+ lr-PODVR grids range: [    1.143534439,     2.209718553  ] a.u.
+ asy-PODVR grids range: [    0.970733044,    10.895059718  ] a.u.
+ int-PODVR grids range: [    0.653499560,    11.949736640  ] a.u.
+ Please ensure that the PODVR grid covers the relevant region of the BC potential!
+ 
+ Initial ro-vibrational energy of (v0, j0) = ( 4 0) at iPES =  1
+ Evj of BC =     2.160918900 eV.
+ Evj of BC = 17428.986334397 cm-1.
+ Please check the ro-vibrational eigenvalues of BC at j0 in BC_roVibEvj0.chk!
+ 
+ =====> Basis information <=====
+ 
+ IALR basis set, Z in sin-DVR |Z_l>, r in PODVR |r_p>, theta in FBR |JMjK>
+ Number of Z grid points :   1999
+ Long-range Z grid range: [    40.080000000,  199.900050000 ] a.u.
+ Asymptotic Z grid range: [    10.095000000,   39.980050000 ] a.u.
+ Interaction Z grid range: [     0.199950000,    9.995050000 ] a.u.
+ Number of r PODVR points in interaction region :    200
+ Number of r PODVR points in asymptotic region :     20
+ Number of r PODVR points in long range region :      5
+ Number of (j, K) pairs in interaction region :    125
+ Number of (j, K) pairs in asymptotic region :     31
+ Number of (j, K) pairs in long range region :      1
+ Number of Gaussian-Legendre quadrature in interaction region :     63
+ Number of Gaussian-Legendre quadrature in asymptotic region :     16
+ Number of Gaussian-Legendre quadrature in long range region :      1
+ Maximum numbers of (v, j, K) in interaction region =   200  125    1
+ Maximum numbers of (v, j, K) in asymptotic region =    20   30    1
+ 
+ =====> Initial WP infromation <=====
+ 
+ Z0 =    45.000000000 , E0 (eV) =     0.050000000 , delta =     1.200000000
+ Initial Gaussian wave-packet normalization check:     0.500007218
+ Initial adiabatic total wave-packet normalization check:     0.500007218
+ 
+ =====> Energy information <=====
+ 
+ Total energy points:   100
+ Collsion energy interval [     0.001000000 eV ,     0.100000000 eV ]
+ Please check Energy_Info.chk !
+ 
+ =====> Vasb information <=====
+ 
+ Absorbing potential in r:
+ Range of Vabs: [    8.508749995,    12.008749995 ]
+ When nDVR >=  139, the absorbing potential starts to work.
+ Please ensure that the intermediate coordinate lies outside the absorbing region !!
+ 
+ Absorbing potential in Z_lr:
+ Range of Vabs: [   50.000000000,   200.000000000 ]
+ When nDVR >=  499, the absorbing potential starts to work.
+ Please ensure that the intermediate coordinate lies outside the absorbing region !!
+ 
+ Absorbing potential in Z_asy:
+ Note that the Vabs only works for the channel with (v, j, iPES) /= (v0, j0, initPES)!
+ Range of Vabs: [   20.080000000,    40.080000000 ]
+ When nDVR >=  199, the absorbing potential starts to work.
+ Please ensure that the intermediate coordinate lies outside the absorbing region !!
+ 
+ 
+ =====> Intermediate coordinate RCB information <=====
+ 
+ 
+ Intermediate coordinate ichoice = 1, R_r -> Z_p, X, Y = Z_r, theta_r.
+ Intermediate coordinate ichoice = 2, Z_r -> Z_p, X, Y = r_r, theta_r.
+ Number of product channels:  1
+ Product channel 1 : A + BC -> C + AB :
+ Reduced Masses of AB (a.u.): 1224.454676090
+ Total Masses of C + AB (a.u.): 1377.688020666
+ vmax =   6 jmax =  25 jpar =  0
+ Evj of AB (v0,jmin) =     0.234343962 eV.
+ Evj of AB (v0,jmin) =  1890.111518400 cm-1.
+ Please check the energy!
+ Number of jK pairs in channel 1:   51
+ ichoice =  1
+ Number of intermediate coordinates in channel 1: 2994
+ Please check InterCoorWF_AB.chk for the wavefunction normalization!
+ Zmin:     0.199950000 Zmax:     5.397350000
+ rmin:     2.104036725 rmax:     7.493893962
+ 
+ =====> Potential information <=====
+ 
+ Calculating interaction potential in the interaction region...
+ Calculating interaction potential in the asymptotic region...
+ Calculating interaction potential in the long-range region...
+ 
+ =====> Chebyshev scale information <=====
+ 
+ Hmax(eV) =     86.45933  Hmin =     -4.57863
+ H+(eV) =     40.94035  H-(eV) =     45.51898
+ Z Kinetic Max(eV) =      7.31942
+ r Kinetic Max(eV) =     49.03992, r Kinetic Min(eV) =      0.27019
+ Rotational Max(eV) =     10.00000
+ CPE Max(eV) =     10.00000
+ Vpot Max(eV) =     10.00000, Vpot Min(eV) =     -4.74881
+ TimeStep Max =      1.13393
+ TimeStep Min =      1.14155
+ TimeStep Avg =      1.13774
+ 
+ =====> Chebyshev propagation <=====
+ 
+     Step       intNorm       asyNorm        lrNorm       totNorm      CPU(s)
+ ----------------------------------------------------------------------------
+        0       0.00000       0.00000       0.50001       0.50001          --
+     1000       0.00000       0.00004       1.20763       1.20768      94.853
+     2000       0.00000       0.03711       0.95669       0.99379      94.630
+     3000       0.00000       0.22412       0.77720       1.00133      94.975
+     4000       0.00000       0.40163       0.59677       0.99840      95.145
+     5000       0.00000       0.47670       0.51856       0.99525      95.170
+     6000       0.00000       0.48845       0.49835       0.98680      94.887
+     7000       0.00000       0.49423       0.47749       0.97171      95.071
+     8000       0.00000       0.49847       0.45072       0.94918      95.086
+     9000       0.00000       0.49828       0.42020       0.91848      95.176
+    10000       0.00000       0.49957       0.38105       0.88062      95.080
+ 
+ Propagation done!
+ 
+ AB S-matrix written to file: AB_J1L1iPES1.Smat

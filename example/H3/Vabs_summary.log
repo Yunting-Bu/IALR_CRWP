@@ -1,0 +1,56 @@
+Direct 1D absorber summary (NIPtest logic)
+============================================
+
+System                 : D + HH
+Reduced mass mu (a.u.) : 1836.446787933
+Collision grid (eV)    : 0.001000 ... 0.100000
+Grid points            : 2126
+dZ (bohr)              : 0.099905877
+Zf / POSFLUX (bohr)    : 37.764515562  (LEFT of packet)
+Initial norm check     : 1.000000000
+max |AE0|^2            : 4.917394e+02
+Current C from ABC.inf : 0.010000
+Current Δx from ABC.inf: 150.000000
+Fixed left guard       : Δx = 20.000000, C = 0.050000
+
+This script follows NIPtest logic (FLUX0/FLUX2 -> S2S_EX2):
+  1. right-moving traveling Gaussian packet (exp(+ik0 Z) * envelope)
+  2. probe/POSFLUX placed to the LEFT of the packet center
+  3. propagate with Chebyshev; apply Vabs_EXP absorber every step
+  4. at each step accumulate PHIE0(E) and PHIE0p(E) at the probe
+  5. S(E) = PHIE0*dt/AE0 * sqrt(k/(2pi*mu)) * exp(i*k*Zf)  [S2S_EX2]
+  6. P(E) = |S(E)|^2  (reflection probability)
+  7. cross-check: P_current from S2S_EXM
+
+Δx scan
+-------
+Δx =   40.000  P_max =  1.0663e+00  accept = False  steps =   694
+Δx =   60.000  P_max =  7.4361e-01  accept = False  steps =   694
+Δx =   80.000  P_max =  5.1889e-01  accept = False  steps =   694
+Δx =  100.000  P_max =  3.6225e-01  accept = False  steps =   694
+Δx =  120.000  P_max =  2.5302e-01  accept = False  steps =   694
+Δx =  140.000  P_max =  1.7680e-01  accept = False  steps =   694
+Δx =  150.000  P_max =  1.4781e-01  accept = False  steps =   694
+Δx =  160.000  P_max =  1.2358e-01  accept = False  steps =   694
+
+Accepted Δx values     : none
+Chosen Δx for C scan   : 160.000000
+
+C scan
+------
+C  =   0.0010  P_max =  1.6444e+00  accept = False  steps =   694
+C  =   0.0020  P_max =  1.2318e+00  accept = False  steps =   694
+C  =   0.0050  P_max =  5.1888e-01  accept = False  steps =   694
+C  =   0.0100  P_max =  1.2358e-01  accept = False  steps =   694
+C  =   0.0200  P_max =  9.0917e-03  accept = False  steps =   694
+C  =   0.0500  P_max =  8.7982e-03  accept = False  steps =   694
+C  =   0.1000  P_max =  8.8021e-03  accept = False  steps =   694
+
+Accepted C values      : none
+
+Recommended pair
+----------------
+Δx = 160.000000
+C  = 0.050000
+P_max = 8.798205e-03
+Accepted = False

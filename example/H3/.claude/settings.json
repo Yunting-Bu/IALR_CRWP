@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/byt/myResearch/IALR_CRWP/**)",
+      "Read(//Users/byt/software/cold_dia_cheby/**)"
+    ]
+  }
+}
