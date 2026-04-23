@@ -2,10 +2,10 @@
 
 ! Task types for the calculation
 &task
-    nChannel           = 1                          ! Number of reactive channels
+    nChannel           = 0                          ! Number of reactive channels
     IF_inelastic       = .true.                     ! Inelastic calculation flag  
     IF_modHankel        = .false.                   ! Whether using modified Hankel function for a(E)
-    inePos             = 25.0                        ! Projection plane for inelastic
+    inePos             = 15.0                        ! Projection plane for inelastic
     Atoms              = 'D', 'H', 'H'              ! Atoms, A B C order 
     nPES               = 1                          ! Number of PESs
     energyUnit         = 2                          ! Energy unit: 1 for cm-1, 2 for eV, 3 for Kelvin, 4 for Hartree
@@ -19,8 +19,8 @@
 &initWavePacket
     initWP%j0                 = 0                          ! Initial rotational quantum number
     initWP%v0                 = 4                          ! Initial vibrational quantum number
-    initWP%l0                 = 1
-    initWP%Jtot               = 1
+    initWP%l0                 = 0
+    initWP%Jtot               = 0
     initWP%tpar               = 1
     initWP%jpar               = 1                          ! Rotational parity
     initWP%Zc                 = 45.0                      ! Initial center of WP
@@ -36,16 +36,16 @@
     IALR%nZ_IA               = 399                        ! Number of Z grid points for asymptotic + interaction region
     IALR%nZ_I                = 99                         ! Number of Z grid points for interaction region
     IALR%r_range             = 0.6, 12.0                   ! r grid range
-    IALR%vint                = 200                         ! Number of v for interaction region
-    IALR%jint                = 125                         ! Number of j for interaction region
-    IALR%vasy                = 20                         ! Number of v for asymptotic region
-    IALR%jasy                = 30                         ! Number of j for asymptotic region
+    IALR%vint                = 90                         ! Number of v for interaction region
+    IALR%jint                = 100                         ! Number of j for interaction region
+    IALR%vasy                = 10                         ! Number of v for asymptotic region
+    IALR%jasy                = 25                         ! Number of j for asymptotic region
     IALR%nr_DVR              = 500                         ! Number of r grid points for DVR
 /
 
 ! Parameters for propagation
 &propagation
-    timeTot           = 10000                     ! Total propagation time
+    timeTot           = 150000                     ! Total propagation time
     timePrint         = 1000                        ! Time interval for printing
 /
 
@@ -61,7 +61,7 @@
 &VabsAndDump
     Vabs%type              = 'EXP'                       ! Absorbing potential type: 'EXP' for exponential, 'TF' for transmission-free
     Vabs%Zasy_range        = 20.0                        ! Z grid range for asymptotic absorbing potential
-    Vabs%Casy              = 0.05                       ! Coefficient for asymptotic absorbing potential
+    Vabs%Casy              = 0.03                       ! Coefficient for asymptotic absorbing potential
     Vabs%Zlr_range         = 150.0                      ! Z grid range for long-range absorbing potential
     Vabs%Clr               = 0.01                     ! Coefficient for long-range absorbing potential
     Vabs%rabs_range        = 3.5                         ! r grid range for radial absorbing potential

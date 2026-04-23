@@ -41,6 +41,10 @@ contains
         allocate(lr_auxWP(IALR%nZ_IALR, IALR%vlr, lr_njK, 1))
         allocate(int_Vtmp(nPES,IALR%int_nA))
         allocate(asy_Vtmp(nPES,IALR%asy_nA))
+        if (IF_inelastic) then
+            allocate(ine_TIDWF(nEtot,IALR%vasy,IALR%asy_nA,initWP%Kmin:min(initWP%Jtot,IALR%jasy),nPES))
+            ine_TIDWF = imgZero
+        end if
 
 !> k = 0, |\phi>_0 = |initWP>
         lr_TDWPm = lr_TDWP; lr_TDWP = 0.0_f8
@@ -67,8 +71,8 @@ contains
         flush(outFileUnit)
         do iStep = 1, timeTot
             call ChebyshevRecursion(iStep)
-            call setTIDWF(iStep,'A+BC->C+AB',channel1%ichoice)
-            !write(8888,*) iStep, intAB_TIDWF(1,18,0,1)%re, intAB_TIDWF(1,18,0,1)%im
+            if (IF_inelastic) call ineSetTIDWF(iStep)
+            if (nChannel >= 1) call setTIDWF(iStep,'A+BC->C+AB',channel1%ichoice)
             if (nChannel == 2) then
                 call setTIDWF(iStep,'A+BC->B+AC',channel2%ichoice)
             end if
@@ -86,14 +90,6 @@ contains
                 iPrint = 0
             end if
         end do
-        !call dumpIntAB_TIDWF('intAB_TIDWF.chk')
-        !do ith = 1, IALR%int_nA
-        !    do ir = 1, IALR%vint
-        !        do iZ = 1, IALR%nZ_I
-        !            write(789,*) iZ, ir, ith, int_TDWPm(iZ,ir,ith,1)
-        !        end do
-        !    end do
-        !end do
         write(outFileUnit,'(1x,a)') ''
         write(outFileUnit,'(1x,a)') 'Propagation done!'
         write(outFileUnit,'(1x,a)') ''
@@ -255,6 +251,63 @@ contains
         end do
 
     end subroutine setTIDWF
+!> ------------------------------------------------------------------------------------------------------------------ <!
+
+!> ------------------------------------------------------------------------------------------------------------------ <!
+    subroutine ineSetTIDWF(iStep)
+!> Accumulate inelastic TIDWF at Z = Z_IALR(iInePos) only
+        implicit none
+        integer, intent(in) :: iStep
+        integer :: nti, K, Kmax, ntk, j
+        integer :: ir, ijK, iPES, iEtot, ith
+        complex(c8) :: FourierFactor(nEtot)
+        real(f8) :: rthTmp(IALR%vasy, IALR%asy_nA)
+        real(f8) :: rthSlice(IALR%vasy, IALR%asy_nA)
+        real(f8) :: invSqrtDZ
+
+        FourierFactor(:) = cdexp(cmplx(0.0_f8,-iStep*ChebyAngle(:), kind=c8))
+        invSqrtDZ = 1.0_f8 / dsqrt(Z_IALR(2) - Z_IALR(1))
+
+        Kmax = min(IALR%jasy, initWP%Jtot)
+        nti = 0
+        do K = initWP%Kmin, Kmax
+            ntk = 0
+            do j = initWP%jmin, IALR%jasy, initWP%jinc
+                if (j >= K) ntk = ntk + 1
+            end do
+
+            do iPES = 1, nPES
+                !> FBR -> DVR for angle (r remains in PODVR-FBR)
+                call dgemm('N','T', IALR%vasy*IALR%nZ_IA, IALR%asy_nA, ntk, &
+                            1.0_f8, asy_TDWPm(1,1,nti+1,iPES), IALR%vasy*IALR%nZ_IA, &
+                            asy_YMat(1,nti+1), IALR%asy_nA, &
+                            0.0_f8, asy_auxWP(1,1,1,iPES), IALR%vasy*IALR%nZ_IA)
+            end do
+
+!> Extract Z-slice at iInePos and transform r from PODVR-FBR to PODVR-DVR
+            do iPES = 1, nPES
+                do ith = 1, IALR%asy_nA
+                    do ir = 1, IALR%vasy
+                        rthTmp(ir, ith) = asy_auxWP(iInePos, ir, ith, iPES) * invSqrtDZ
+                    end do
+                end do
+                call dgemm('T', 'N', IALR%vasy, IALR%asy_nA, IALR%vasy, &
+                            1.0_f8, asy_PO2FBR, IALR%vasy, &
+                            rthTmp, IALR%vasy, &
+                            0.0_f8, rthSlice, IALR%vasy)
+!$OMP parallel do default(shared) private(ith,ir) collapse(2)
+                do ith = 1, IALR%asy_nA
+                    do ir = 1, IALR%vasy
+                        call zaxpy(nEtot, cmplx(rthSlice(ir,ith),0.0_f8,kind=c8), FourierFactor, 1, &
+                                    ine_TIDWF(1,ir,ith,K,iPES), 1)
+                    end do
+                end do
+!$OMP end parallel do
+            end do
+            nti = nti + ntk
+        end do
+
+    end subroutine ineSetTIDWF
 !> ------------------------------------------------------------------------------------------------------------------ <!
 
 !> ------------------------------------------------------------------------------------------------------------------ <!
@@ -475,24 +528,21 @@ contains
 !$OMP end parallel do
         else
             !> For nK > 1 - full K-coupling using IA_CPMat and lr_CPMat
+            !> Use int_seqjK to directly index all K values for same j,
+            !> since jKPair is ordered K-first (K=0 block, then K=1 block, ...),
+            !> so same-j entries with different K are NOT adjacent.
             !> interaction region
             Kmax = min(IALR%jint, initWP%Jtot)
             do iPES = 1, nPES
-!$OMP parallel do default(shared) private(idjK,jdjK,K,Kp,j,ir,iZ,jstart)
+!$OMP parallel do default(shared) private(idjK,jdjK,K,Kp,j,ir,iZ)
                 do idjK = 1, int_njK
                     j = int_jKPair(idjK,1)
                     K = int_jKPair(idjK,2)
-                    !> Find starting index for same j
-                    jstart = idjK
-                    do while (jstart > 1)
-                        if (int_jKPair(jstart-1,1) /= j) exit
-                        jstart = jstart - 1
-                    end do
                     do ir  = 1, IALR%vint
                         do iZ = 1, IALR%nZ_I
-                            !> Sum over all K' for same j
-                            do jdjK = jstart, int_njK
-                                if (int_jKPair(jdjK,1) /= j) exit
+                            !> Sum over all K' for same j using int_seqjK
+                            do Kp = initWP%Kmin, min(Kmax, j)
+                                jdjK = int_seqjK(j,Kp)
                                 int_TDWP(iZ,ir,idjK,iPES) = int_TDWP(iZ,ir,idjK,iPES) + &
                                     IA_CPMat(iZ,idjK,jdjK) * int_TDWPm(iZ,ir,jdjK,iPES)
                             end do
@@ -505,24 +555,17 @@ contains
             !> asymptotic region
             Kmax = min(IALR%jasy, initWP%Jtot)
             do iPES = 1, nPES
-!$OMP parallel do default(shared) private(idjKa,jdjKa,K,Kp,j,ir,iZ,jstart)
+!$OMP parallel do default(shared) private(idjKa,jdjKa,idjK,jdjK,K,Kp,j,ir,iZ)
                 do idjKa = 1, asy_njK
                     j = asy_jKPair(idjKa,1)
                     K = asy_jKPair(idjKa,2)
                     !> Map to int index for IA_CPMat
                     idjK = int_seqjK(j,K)
-                    !> Find starting index for same j in asy (avoid short-circuit issue)
-                    jstart = idjKa
-                    do while (jstart > 1)
-                        if (asy_jKPair(jstart-1,1) /= j) exit
-                        jstart = jstart - 1
-                    end do
                     do ir  = 1, IALR%vasy
                         do iZ = IALR%nZ_I+1, IALR%nZ_IA
-                            !> Sum over all K' for same j
-                            do jdjKa = jstart, asy_njK
-                                if (asy_jKPair(jdjKa,1) /= j) exit
-                                Kp = asy_jKPair(jdjKa,2)
+                            !> Sum over all K' for same j using asy_seqjK
+                            do Kp = initWP%Kmin, min(Kmax, j)
+                                jdjKa = asy_seqjK(j,Kp)
                                 jdjK = int_seqjK(j,Kp)
                                 asy_TDWP(iZ,ir,idjKa,iPES) = asy_TDWP(iZ,ir,idjKa,iPES) + &
                                     IA_CPMat(iZ,idjK,jdjK) * asy_TDWPm(iZ,ir,jdjKa,iPES)
@@ -834,7 +877,11 @@ contains
         lr_Vdia = (lr_Vdia - Hplus) / Hminus
 
 !> Chebyshev angles
-        Ev0j0 = int_POEig(initWP%v0+1)
+        if (IF_inelastic) then
+            Ev0j0 = Evj_BC(initWP%v0,initWP%j0,initWP%PES0)
+        else
+            Ev0j0 = int_POEig(initWP%v0+1)
+        end if
         do iEtot = 1, nEtot
             Etot(iEtot) = Ecol(iEtot) + Ev0j0
             ChebyAngle(iEtot) = dacos((Etot(iEtot) - Hplus) / Hminus)
@@ -1103,13 +1150,12 @@ contains
 
 !> Rebuild CPM in IA
             IA_CPMat(1:IALR%nZ_IA,:,:) = UMat(1:IALR%nZ_IA,:,:)
-!> Rebuild CPM in LR
+!> Rebuild CPM in LR (UMat uses int_seqjK indexing, lr_CPMat uses lr_seqjK)
             Kmax = min(initWP%Jtot, initWP%j0)
             do K = initWP%Kmin, Kmax
                 do Kp = initWP%Kmin, Kmax
-                    idjK = lr_seqjK(initWP%j0,K)
-                    jdjK = lr_seqjK(initWP%j0,Kp)
-                    lr_CPMat(:,idjK,jdjK) = UMat(:,idjK,jdjK)
+                    lr_CPMat(:,lr_seqjK(initWP%j0,K),lr_seqjK(initWP%j0,Kp)) = &
+                        UMat(:,int_seqjK(initWP%j0,K),int_seqjK(initWP%j0,Kp))
                 end do
             end do
 

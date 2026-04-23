@@ -4,7 +4,7 @@ module m_Potent
     implicit none
 
     public
-    private :: setVabs, setPot
+    private :: setPot
     private :: Vabs_EXP, Vabs_TF
     
 contains
@@ -80,6 +80,7 @@ contains
                 stop
             end if
             deallocate(work)
+            AtDMat = diaV
         else 
             AtDMat = 1.0_f8
             adiaV(1) = diaV(1,1)
@@ -124,11 +125,14 @@ contains
         bond = longDistance
 !> C + AB, bond(1) = rAB
 !> B + AC, bond(3) = rAC
-        if (type == 'A+BC->C+AB') then 
+        if (type == 'A+BC->C+AB') then
             IDreac = 1
             bond(IDreac) = rp
         else if (type == 'A+BC->B+AC') then
             IDreac = 3
+            bond(IDreac) = rp
+        else if (type == 'A+BC->A+BC') then
+            IDreac = 2
             bond(IDreac) = rp
         else
             write(outFileUnit,'(1x,a)') 'Error: unknown reaction type in setPotProduct!'

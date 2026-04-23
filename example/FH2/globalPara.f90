@@ -3,7 +3,7 @@ module m_gPara
     implicit none
     public
 
-    private :: getMass, diatomParity, energySet
+    private :: diatomParity, energySet
 
 !> ========== Constants ==========
 
@@ -77,6 +77,10 @@ module m_gPara
 !> Inelastic
     logical :: IF_inelastic
     real(f8) :: inePos
+    integer :: iInePos
+    real(f8), allocatable :: Evj_BC(:,:,:)
+    real(f8), allocatable :: WFvj_BC(:,:,:,:,:,:)
+    complex(c8), allocatable :: ine_TIDWF(:,:,:,:,:)
 !> Flux
     character(len=1) :: IDflux
     integer :: iZFluxPos
@@ -118,11 +122,11 @@ module m_gPara
     real(f8), allocatable :: Z_IALR(:)
     real(f8), allocatable :: initGaussWP(:)
 !> r
-    real(f8), allocatable :: r_Int(:), r_Asy(:), r_LR(:)
+    real(f8), allocatable :: r_DVR(:), r_Int(:), r_Asy(:), r_LR(:)
     real(f8), allocatable :: int_POWF(:,:), asy_POWF(:,:), lr_POWF(:,:)
     real(f8), allocatable :: int_PO2FBR(:,:), asy_PO2FBR(:,:), lr_PO2FBR(:,:)
-    real(f8), allocatable :: int_POEig(:)
-    real(f8), allocatable :: int_PO2DVR(:,:)
+    real(f8), allocatable :: int_POEig(:), asy_POEig(:), lr_POEig(:)
+    real(f8), allocatable :: int_PO2DVR(:,:), asy_PO2DVR(:,:)
 !> Vabs
     real(f8), allocatable :: asy_ZFabs(:), lr_ZFabs(:), int_rFabs(:)
 !> Hamiltonian matrix
@@ -172,8 +176,13 @@ module m_gPara
     integer, allocatable :: qn_l_AB(:), qn_l_AC(:)
 !> SF to BF transformation matrix in product channels
     real(f8), allocatable :: BLK_AB(:,:), BLK_AC(:,:)
-!> S matrix in SF 
+!> S matrix in SF
     complex(c8), allocatable :: Smat_AB(:,:,:,:), Smat_AC(:,:,:,:)
+!> Inelastic S matrix in SF
+    complex(c8), allocatable :: Smat_BC(:,:,:,:)
+!> Orbital angular momentum and BF to SF for inelastic channel
+    integer, allocatable :: qn_l_BC(:)
+    real(f8), allocatable :: BLK_BC(:,:)
 !> Tpyes declarations
     type(initWP_class) :: initWP
     type(IALR_class) :: IALR 
@@ -222,14 +231,19 @@ contains
         open(newunit=outFileUnit, file=trim(outfile)//".out", status='replace')
         !> Should add more output files later
 
-        if (initWP%tpar == 1) then 
+        if (initWP%tpar == 1) then
             initWP%Kmin = 0
-        else if (initWP%tpar == -1) then 
+        else if (initWP%tpar == -1) then
             initWP%Kmin = 1
-        else 
+        else
             write(outFileUnit,*) "Error: total parity tpar must be 1 or -1."
             write(outFileUnit,*) "POSITION: globalPara.f90, subroutine initPara()"
             stop
+        end if
+
+        !> nChannel=0: inelastic only, force IF_inelastic
+        if (nChannel == 0) then
+            IF_inelastic = .true.
         end if
 
         if (initWP%tpar /= (-1)**(initWP%Jtot+initWP%j0+initWP%l0)) then 
@@ -259,7 +273,8 @@ contains
         write(outFileUnit,'(1x,a)') " =====> Input parameters <======"
         write(outFileUnit,'(1x,a)') ''
         write(outFileUnit,'(1x,a,a,a)') "Reaction Channel: ", &
-            merge("A + BC -> AB + C           ", "A + BC -> AB + C and AC + B", nChannel==1)
+            merge("Inelastic only (A+BC)       ", &
+            merge("A + BC -> AB + C            ", "A + BC -> AB + C and AC + B ", nChannel==1), nChannel==0)
         write(outFileUnit,'(1x,6a)') "Atoms A, B, C: ", Atoms(1),', ', Atoms(2),', ', Atoms(3)
         write(outFileUnit,'(1x,a,f15.9)') "Reduced Masses of BC (a.u.):", massBC
         write(outFileUnit,'(1x,a,f15.9)') "Reduced Masses of ABC (a.u.):", massTot

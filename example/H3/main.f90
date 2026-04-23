@@ -15,15 +15,20 @@ program IALR_WP_CRWP
     call setInitTotWP()
     call setEnergyAM()
     call initAllVabs()
-    call initRCB()
+    if (nChannel >= 1) call initRCB()
     call HamiltonianScale()
     call propProcess()
-    call extractSmat('A+BC->C+AB')
+    if (IF_inelastic) then
+        call setInelastic()
+        call extractSmat_ine()
+        call writeSmat_ine()
+    end if
+    if (nChannel >= 1) then
+        call extractSmat('A+BC->C+AB')
+        call writeSmat('A+BC->C+AB')
+    end if
     if (nChannel == 2) then
         call extractSmat('A+BC->B+AC')
-    end if
-    call writeSmat('A+BC->C+AB')
-    if (nChannel == 2) then
         call writeSmat('A+BC->B+AC')
     end if
 

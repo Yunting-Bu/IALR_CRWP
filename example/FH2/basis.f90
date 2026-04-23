@@ -1,5 +1,5 @@
 module m_Basis
-    use m_MachinaBasic, only : f8
+    use m_MachinaBasic, only : f8, c8
     use m_gPara
     use m_Potent
     implicit none
@@ -135,6 +135,162 @@ contains
 !> ------------------------------------------------------------------------------------------------------------------ <!
 
 !> ------------------------------------------------------------------------------------------------------------------ <!
+    subroutine findPositionID(nGrid, Grid, pos, posID)
+        implicit none
+        integer, intent(in) :: nGrid
+        real(f8), intent(in) :: Grid(nGrid)
+        real(f8), intent(in) :: pos
+        integer, intent(out) :: posID
+        integer :: i
+
+        posID = 0
+        do i = 1, nGrid
+            if (Grid(i) >= pos) then
+                posID = i
+                exit
+            end if
+        end do
+        if (posID == 0) then
+            write(outFileUnit,*) 'Error in findPositionID: position out of grid range'
+            write(outFileUnit,*) 'POSITION: basis.f90, subroutine findPositionID()'
+            stop
+        end if
+
+    end subroutine findPositionID
+!> ------------------------------------------------------------------------------------------------------------------ <!
+
+!> ------------------------------------------------------------------------------------------------------------------ <!
+    subroutine PODVR_BCvj()
+        implicit none
+        integer :: ir, i, j, v, qn_j, K, ijK, ith, iPES, Kmax
+        real(f8) :: mass, r_range, tmp
+        real(f8) :: Vadia(nPES), Vpot(IALR%nr_DVR), VBC(IALR%nr_DVR, nPES)
+        real(f8) :: DVREig(IALR%nr_DVR), DVRWF(IALR%nr_DVR, IALR%nr_DVR)
+        real(f8) :: HRefMat(IALR%vasy,IALR%vasy), EMat(IALR%vasy,IALR%vasy)
+        real(f8) :: XMat(IALR%vasy,IALR%vasy), poTransMat(IALR%nr_DVR, IALR%vasy)
+        real(f8) :: poEig(IALR%vasy), poGrid(IALR%vasy)
+        real(f8), allocatable :: work(:)
+        integer :: lwork, info
+        character(len=10) :: type
+
+        mass = massBC
+        r_range = IALR%r_range(2) - IALR%r_range(1)
+        Kmax = min(IALR%jasy, initWP%Jtot)
+        type = 'A+BC->A+BC'
+
+        allocate(Evj_BC(0:IALR%vasy-1,initWP%jmin:IALR%jasy,nPES))
+        allocate(WFvj_BC(IALR%vasy,IALR%asy_nA,0:IALR%vasy-1, &
+                        initWP%jmin:IALR%jasy,initWP%Kmin:Kmax,nPES))
+        
+        Evj_BC = 0.0_f8
+        WFvj_BC = 0.0_f8
+
+        do ir = 1, IALR%nr_DVR
+            call setPot_Product(type, r_DVR(ir), Vadia)
+            VBC(ir,:) = Vadia
+        end do
+
+        do iPES = 1, nPES 
+            Vpot(:) = VBC(:,iPES)
+            call DVR_vib(IALR%nr_DVR,mass,r_range,Vpot,DVREig,DVRWF)
+
+            do i = 1, IALR%nr_DVR
+                do j = 1, IALR%vasy
+                    poTransMat(i,j) = DVRWF(i,j)
+                end do 
+            end do
+
+            do i = 1, IALR%vasy
+                call phaseTrans(IALR%nr_DVR, poTransMat(:,i))
+            end do
+
+            do i = 1, IALR%vasy
+                do j = i, IALR%vasy
+                    tmp = 0.0_f8
+                    do ir = 1, IALR%nr_DVR
+                        tmp = tmp + poTransMat(ir,i) * r_DVR(ir) * poTransMat(ir,j)
+                    end do
+                    XMat(i,j) = tmp
+                    XMat(j,i) = tmp
+                end do
+            end do
+
+            allocate(work(1))
+            call dsyev('V', 'U', IALR%vasy, XMat, IALR%vasy, poGrid, work, -1, info)
+            lwork = int(work(1))
+            deallocate(work)
+
+            allocate(work(lwork))
+            call dsyev('V', 'U', IALR%vasy, XMat, IALR%vasy, poGrid, work, lwork, info)
+            if (info /= 0) then
+                write(outFileUnit,*) "Error in DSYEV of PODVR XMat, info =", info
+                write(outFileUnit,*) "POSITION: basis.f90, subroutine PODVR_BCvj()"
+                stop
+            end if
+            deallocate(work)
+
+            do i = 1, IALR%vasy
+                call phaseTrans(IALR%vasy, XMat(:,i))
+            end do
+
+            do i = 1, IALR%vasy
+                do j = 1, i
+                    tmp = 0.0_f8
+                    do ir = 1, IALR%vasy
+                        tmp = tmp + XMat(ir,i) * DVREig(ir) * XMat(ir,j)
+                    end do
+                    HRefMat(i,j) = tmp
+                    HRefMat(j,i) = tmp
+                end do
+            end do
+
+            do qn_j = initWP%jmin, IALR%jasy, initWP%jinc
+                EMat = HRefMat
+                do i = 1, IALR%vasy
+                    EMat(i,i) = EMat(i,i) + &
+                                (qn_j*(qn_j+1))/(2.0_f8*mass*poGrid(i)**2)
+                end do
+
+                allocate(work(1))
+                call dsyev('V', 'U', IALR%vasy, EMat, IALR%vasy, poEig, work, -1, info)
+                lwork = int(work(1))
+                deallocate(work)
+
+                allocate(work(lwork))
+                call dsyev('V', 'U', IALR%vasy, EMat, IALR%vasy, poEig, work, lwork, info)
+                if (info /= 0) then
+                    write(outFileUnit,*) "Error in DSYEV of PODVR HRefMat, info =", info
+                    write(outFileUnit,*) "POSITION: basis.f90, subroutine PODVR_BCvj()"
+                    stop
+                end if
+                deallocate(work)
+
+                do i = 1, IALR%vasy 
+                    call phaseTrans(IALR%vasy, EMat(:,i))
+                end do 
+
+                do v = 0, IALR%vasy-1
+                    Evj_BC(v, qn_j, iPES) = poEig(v+1)
+                end do 
+
+                do i = 1, IALR%vasy 
+                    do v = 0, IALR%vasy-1
+                        do K = initWP%Kmin, min(qn_j, initWP%Jtot)
+                            ijK = asy_seqjK(qn_j,K)
+                            if (ijK > 0) then
+                                do ith = 1, IALR%asy_nA
+                                    WFvj_BC(i,ith,v,qn_j,K,iPES) = EMat(i,v+1)*asy_YMat(ith,ijK)
+                                end do
+                            end if
+                        end do
+                    end do
+                end do
+            end do
+        end do 
+
+    end subroutine PODVR_BCvj
+!> ------------------------------------------------------------------------------------------------------------------ <!
+
     subroutine setBasis()
         implicit none
         real(f8) :: range
@@ -147,17 +303,30 @@ contains
 !> Z in sin-DVR : |Z_l>
         allocate(Z_IALR(IALR%nZ_IALR))
         call sinDVRGrid(IALR%nZ_IALR, IALR%Z_range(1), IALR%Z_range(2), Z_IALR)
+        
+!> Find the position ID for inelastic
+        if (IF_inelastic) then
+            call findPositionID(IALR%nZ_IALR, Z_IALR, inePos, iInePos)
+            if (iInePos <= IALR%nZ_I .or. iInePos > IALR%nZ_IA) then
+                write(outFileUnit,*) 'Error in setBasis: inelastic position out of asymptotic range'
+                write(outFileUnit,*) 'POSITION: basis.f90, subroutine setBasis()'
+                stop
+            end if
+        end if
 
 !> r in PODVR : |r_p>
         IALR%vlr = initWP%v0+1
         allocate(r_Int(IALR%vint), r_Asy(IALR%vasy), r_LR(IALR%vlr))
         allocate(int_POWF(IALR%vint,IALR%vint), asy_POWF(IALR%vasy,IALR%vasy), lr_POWF(IALR%vlr, IALR%vlr))
         allocate(int_PO2FBR(IALR%vint,IALR%vint), asy_PO2FBR(IALR%vasy,IALR%vasy), lr_PO2FBR(IALR%vlr, IALR%vlr))
-        allocate(int_POEig(IALR%vint))
+        allocate(int_POEig(IALR%vint), asy_POEig(IALR%vasy), lr_POEig(IALR%vlr))
+        allocate(r_DVR(IALR%nr_DVR))
         allocate(DVRGrid(IALR%nr_DVR), DVREig(IALR%nr_DVR), DVRWF(IALR%nr_DVR, IALR%nr_DVR))
         allocate(VBC(IALR%nr_DVR))
         allocate(int_PO2DVR(IALR%nr_DVR,IALR%vint))
+        allocate(asy_PO2DVR(IALR%nr_DVR,IALR%vasy))
         call sinDVRGrid(IALR%nr_DVR, IALR%r_range(1), IALR%r_range(2),DVRGrid)
+        r_DVR = DVRGrid
         range = IALR%r_range(2) - IALR%r_range(1)
         do ir = 1, IALR%nr_DVR
             r = DVRGrid(ir)
@@ -168,25 +337,14 @@ contains
             call phaseTrans(IALR%nr_DVR, DVRWF(:,ir))
         end do
 !> long range region
-        call PODVR(IALR%vlr,IALR%nr_DVR,DVRWF,DVRGrid,DVREig,r_LR,int_POEig,lr_POWF,lr_PO2FBR)
+        call PODVR(IALR%vlr,IALR%nr_DVR,DVRWF,DVRGrid,DVREig,r_LR,lr_POEig,lr_POWF,lr_PO2FBR)
 !> asymptotic region
-        call PODVR(IALR%vasy,IALR%nr_DVR,DVRWF,DVRGrid,DVREig,r_Asy,int_POEig,asy_POWF,asy_PO2FBR)
+        call PODVR(IALR%vasy,IALR%nr_DVR,DVRWF,DVRGrid,DVREig,r_Asy,asy_POEig,asy_POWF,asy_PO2FBR)
 !> interaction region
         int_POEig = 0.0_f8; int_POWF = 0.0_f8; int_PO2FBR = 0.0_f8
-        !call phase(IALR%nr_DVR, DVRWF)
+        asy_PO2DVR = DVRWF(:,1:IALR%vasy)
         int_PO2DVR = DVRWF(:,1:IALR%vint)
         call PODVR(IALR%vint,IALR%nr_DVR,DVRWF,DVRGrid,DVREig,r_Int,int_POEig,int_POWF,int_PO2FBR)
-        !do ir = 1, IALR%vint
-        !    call phaseTrans(IALR%nr_DVR, int_PO2DVR(:,ir))
-        !end do
-
-        open(EvjUnit, file='BC_roVibEvj0.chk', status='replace', action='write')
-        write(EvjUnit,'(a)') '# Ro-vibrational eigenvalues of BC at j0, unit in eV'
-        write(EvjUnit,'(a)') '# v, Evj0'
-        do ir = 1, IALR%vint
-            write(EvjUnit,'(i5,2x,f15.9)') ir-1, int_POEig(ir)*au2ev
-        end do
-        close(EvjUnit)
 
         write(outFileUnit,'(1x,a)') '=====> Initail ro-vibrational state information <====='
         write(outFileUnit,'(1x,a)') ''
@@ -194,14 +352,6 @@ contains
         write(outFileUnit,'(1x,a,f15.9,a,f15.9,a)') 'asy-PODVR grids range: [', r_Asy(1), ', ', r_Asy(IALR%vasy), '  ] a.u.'
         write(outFileUnit,'(1x,a,f15.9,a,f15.9,a)') 'int-PODVR grids range: [', r_Int(1), ', ', r_Int(IALR%vint), '  ] a.u.'
         write(outFileUnit,'(1x,a)') "Please ensure that the PODVR grid covers the relevant region of the BC potential!"
-        write(outFileUnit,*) ''
-
-        Ev0j0 = int_POEig(initWP%v0+1)
-
-        write(outFileUnit,'(1x,a,2i2,a,i2)') 'Initial ro-vibrational energy of (v0, j0) = (', initWP%v0, initWP%j0, ') at iPES = ', initWP%PES0
-        write(outFileUnit,'(1x,a,f15.9,a)') 'Evj of BC = ', Ev0j0*au2ev, ' eV.'
-        write(outFileUnit,'(1x,a,f15.9,a)') 'Evj of BC = ', Ev0j0*au2cm, ' cm-1.'
-        write(outFileUnit,'(1x,a)') 'Please check the ro-vibrational eigenvalues of BC at j0 in BC_roVibEvj0.chk!'
         write(outFileUnit,*) ''
 
 !> theta in FBR : |JMjK>
@@ -256,6 +406,34 @@ contains
         call setANodeAndWeight(initWP%jpar, IALR%int_nA, int_ANode, int_AWeight)
         allocate(int_YMat(IALR%int_nA, int_njK))
         call setA_DVR2FBR(int_njK, IALR%int_nA, int_jKPair, int_ANode, int_AWeight, int_YMat)
+
+        if (IF_inelastic) call PODVR_BCvj()
+
+        open(newunit=EvjUnit, file='BC_roVibEvj0.chk', status='replace', action='write')
+        write(EvjUnit,'(a)') '# Ro-vibrational eigenvalues of BC at j0, unit in eV'
+        write(EvjUnit,'(a)') '# v, Evj0'
+        if (IF_inelastic) then
+            do ir = 1, IALR%vasy
+                write(EvjUnit,'(i5,2x,f15.9)') ir-1, Evj_BC(ir-1,initWP%j0,initWP%PES0)*au2ev
+            end do
+        else
+            do ir = 1, IALR%vint
+                write(EvjUnit,'(i5,2x,f15.9)') ir-1, int_POEig(ir)*au2ev
+            end do
+        end if
+        close(EvjUnit)
+
+        if (IF_inelastic) then
+            Ev0j0 = Evj_BC(initWP%v0,initWP%j0,initWP%PES0)
+        else
+            Ev0j0 = int_POEig(initWP%v0+1)
+        end if
+        write(outFileUnit,'(1x,a,2i2,a,i2)') 'Initial ro-vibrational energy of (v0, j0) = (', initWP%v0, initWP%j0, ') at iPES = ', initWP%PES0
+        write(outFileUnit,'(1x,a,f15.9,a)') 'Evj of BC = ', Ev0j0*au2ev, ' eV.'
+        write(outFileUnit,'(1x,a,f15.9,a)') 'Evj of BC = ', Ev0j0*au2cm, ' cm-1.'
+        write(outFileUnit,'(1x,a)') 'Please check the ro-vibrational eigenvalues of BC at j0 in BC_roVibEvj0.chk!'
+        write(outFileUnit,*) ''
+
 !> Output basis information
         write(outFileUnit,'(1x,a)') '=====> Basis information <====='
         write(outFileUnit,'(1x,a)') ''
@@ -264,6 +442,9 @@ contains
         write(outFileUnit,'(1x,a,f15.9,a,f15.9,a)') 'Long-range Z grid range: [ ', Z_IALR(IALR%nZ_IA+1), ',', Z_IALR(IALR%nZ_IALR), ' ] a.u.'
         write(outFileUnit,'(1x,a,f15.9,a,f15.9,a)') 'Asymptotic Z grid range: [ ', Z_IALR(IALR%nZ_I+1), ',', Z_IALR(IALR%nZ_IA), ' ] a.u.'
         write(outFileUnit,'(1x,a,f15.9,a,f15.9,a)') 'Interaction Z grid range: [ ', Z_IALR(1), ',', Z_IALR(IALR%nZ_I), ' ] a.u.'
+        if (IF_inelastic) then
+            write(outFileUnit,'(1x,a,f15.9,a)') 'Inelastic position: ', inePos, ' a.u.'
+        end if
         write(outFileUnit,'(1x,a,i6)') 'Number of r PODVR points in interaction region : ', IALR%vint
         write(outFileUnit,'(1x,a,i6)') 'Number of r PODVR points in asymptotic region : ', IALR%vasy
         write(outFileUnit,'(1x,a,i6)') 'Number of r PODVR points in long range region : ', IALR%vlr
@@ -471,7 +652,8 @@ contains
         integer, intent(in) :: n
         real(f8), intent(inout) :: vec(n)
         integer :: i
-        logical :: found = .false.
+        logical :: found
+        found = .false.
 
         do i = 1, n 
             if (abs(vec(i)) > 1.0e-4_f8) then 

@@ -1,15 +1,21 @@
-! Input file for DCS and ICS
+! Input file for DCS, ICS and rate — Ar + HF inelastic
 
 &stateInfo
-    ichnl          = 1                          ! 1 for C+AB, 2 for B+AC
-    v0                 = 4                          ! Initial vibrational quantum number
+    ichnl              = 1                          ! 0 for inelastic (A+BC)
+    v0                 = 0                          ! Initial vibrational quantum number
     j0                 = 0                          ! Initial rotational quantum number
-    l0                = 0                          ! Initial orbital angular momentum quantum number
-    iPES               = 1                          ! PES index for DCS and ICS calculation
-    nJtot               = 0                          ! Total angular momentum
-    nEtot               = 100                          ! Total energy
-    vf                 = 3                          ! Final vibrational quantum number
-    jf                 = 10                          ! Final rotational quantum number
-    SmatDir             = 'H3_DCS'                 ! Directory for S-matrix
+    iPES               = 1                          ! PES index
+    JtotMax            = 0                          ! Total angular momentum
+    nEtot              =  99                        ! Number of energy points
+    nTemp              = 100                        ! Number of temperature for rate calculation
+    tempRange          = 10.0, 500.0                ! Temperature range (K)
+    nFinal             = 1                          ! Number of final states
+    vf                 = 2                    ! Final vibrational quantum numbers
+    jf                 = 0                    ! Final rotational quantum numbers
+    SmatDir            = 'FH2_DCS'                 ! Directory for S-matrix
+    doAmplitude        = .false.                    ! Compute scattering amplitude
+    doDCS              = .false.                    ! Compute differential cross section
+    doProb             = .true.                     ! Compute reaction probability
+    doICS              = .true.                     ! Compute integral cross section
+    doRate             = .false.                    ! Compute rate constant
 /
-

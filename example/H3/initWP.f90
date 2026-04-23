@@ -139,7 +139,7 @@ contains
         implicit none
         !> For Ricatti-Bessel function 
         real(f8) :: rbZ, rbZU, rbZP, rbZUP 
-        real(f8) :: fact, wZ
+        real(f8) :: fact, wZ, deBroglie
         !!> Phase for trans the Bessel to Hankel
         !complex(c8) :: phase
         integer :: iZ, iEtot, chkUnit
@@ -177,12 +177,17 @@ contains
         end do
 
         close(chkUnit)
+        
 
         write(outFileUnit,'(1x,a)') '=====> Energy information <====='
         write(outFileUnit,'(1x,a)') ''
         write(outFileUnit,'(1x,a,i5)') 'Total energy points: ', nEtot
         write(outFileUnit,'(1x,a,f15.9,a,f15.9,a)') 'Collsion energy interval [ ', Ecol(1)*au2ev, ' eV , ', Ecol(nEtot)*au2ev, ' eV ]'
         write(outFileUnit,'(1x,a)') 'Please check Energy_Info.chk !'
+        deBroglie = 2.0_f8*pi / minval(kReact)
+        write(outFileUnit,'(1x,a,f15.9,a)') 'De Broglie wavelength for the lowest collision energy: ', deBroglie, ' a.u.'
+        deBroglie = 2.0_f8*pi / maxval(kReact)
+        write(outFileUnit,'(1x,a,f15.9,a)') 'De Broglie wavelength for the highest collision energy: ', deBroglie, ' a.u.'
         write(outFileUnit,*) ''
 
 

@@ -22,7 +22,7 @@ module m_InterCoorRCB
     real(f8), private :: RCB_ACZ_range(2), RCB_ACr_range(2) 
 
     public
-    private :: findjMax, DVR_VibRotp
+    private :: DVR_VibRotp
     private :: setUij, interCoorWFvj, setAtDMat
     private :: setNumberInterCoor, setTransKMat
     private :: RCB_rmid, RCB_Zmid
@@ -506,7 +506,7 @@ contains
         real(f8) :: beta, fact
         real(f8), external :: CG
         integer :: iIC, Kr, Kp, Krmax, Kpmax
-        integer :: ijK, l, j
+        integer :: ijK, l, j, K, idx
 
         Krmax = min(IALR%jint, initWP%Jtot)
 
@@ -528,13 +528,19 @@ contains
                 end do
             end do
 
-            !> Qn_l in AB
+            !> Qn_l in AB: map K index to l index one-to-one
             allocate(qn_l_AB(channel1%njK))
             do ijK = 1, channel1%njK
                 j = AB_jKPair(ijK,1)
+                K = AB_jKPair(ijK,2)
+                idx = 0
                 do l = abs(initWP%Jtot - j), initWP%Jtot + j
                     if ((-1)**(l+j+initWP%Jtot) == initWP%tpar) then
-                        qn_l_AB(ijK) = l
+                        if (idx == K - channel1%Kmin) then
+                            qn_l_AB(ijK) = l
+                            exit
+                        end if
+                        idx = idx + 1
                     end if
                 end do
             end do
@@ -572,13 +578,19 @@ contains
                 end do
             end do
 
-            !> Qn_l in AC
+            !> Qn_l in AC: map K index to l index one-to-one
             allocate(qn_l_AC(channel2%njK))
             do ijK = 1, channel2%njK
                 j = AC_jKPair(ijK,1)
+                K = AC_jKPair(ijK,2)
+                idx = 0
                 do l = abs(initWP%Jtot - j), initWP%Jtot + j
                     if ((-1)**(l+j+initWP%Jtot) == initWP%tpar) then
-                        qn_l_AC(ijK) = l
+                        if (idx == K - channel2%Kmin) then
+                            qn_l_AC(ijK) = l
+                            exit
+                        end if
+                        idx = idx + 1
                     end if
                 end do
             end do
@@ -807,7 +819,7 @@ contains
         integer :: iZ, ir, iU, iIC
 
         rFact = 2.0_f8/dsqrt((IALR%r_range(2)-IALR%r_range(1))*(IALR%vint+1.0_f8))
-        Zfact = 2.0_f8/dsqrt((Z_IALR(IALR%nZ_I)-Z_IALR(1))*(IALR%nZ_I+1.0_f8))
+        Zfact = 2.0_f8/((IALR%nZ_I+1.0_f8)*dsqrt(Z_IALR(2)-Z_IALR(1)))
 
 !> Set the Uij transformation matrix
         if (ichoice == 1) then
@@ -853,7 +865,7 @@ contains
                     Uij(iU,iIC) = 0.0_f8
                     do iZ = 1, IALR%nZ_I
                         Uij(iU,iIC) = Uij(iU,iIC) &
-                                    + dsin(iZ*pi*(interCoor(iIC,1)-Z_IALR(1))/(Z_IALR(IALR%nZ_I)-Z_IALR(1))) &
+                                    + dsin(iZ*pi*(interCoor(iIC,1)-IALR%Z_range(1))/((IALR%nZ_I+1.0_f8)*(Z_IALR(2)-Z_IALR(1)))) &
                                     * dsin(iU*iZ*pi/(IALR%nZ_I+1.0_f8))
                     end do
                     Uij(iU,iIC) = Uij(iU,iIC) * Zfact * interCoor(iIC,7)

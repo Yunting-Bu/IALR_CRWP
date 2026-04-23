@@ -6,9 +6,9 @@ c
 c     Input:
 c       nPES     - integer, PES index (1 = ground state SW surface)
 c       bond(3)  - double precision, internuclear distances in bohr
-c                  bond(1) = H-H  distance
-c                  bond(2) = F-H  distance
-c                  bond(3) = H-F  distance
+c                  bond(1) = A-B distance (AB, F-H)
+c                  bond(2) = B-C distance (BC, H-H)
+c                  bond(3) = A-C distance (AC, F-H)
 c
 c     Output:
 c       diaV     - double precision, potential energy in Hartree
@@ -33,7 +33,7 @@ c
       data icall /0/
 c
       if (icall .eq. 0) then
-         write (6,61)
+         !write (6,61)
          open (unit=1, file='SW.3p', status='old')
          i = 1
    2     read (1,*,end=3) nparm, b(i), c(i), d(i), a(i)
@@ -53,9 +53,9 @@ c
 c
 c     Aguado-Paniagua type fit
 c
-      x = min(bond(2), bond(3))
-      y = bond(1)
-      z = max(bond(2), bond(3))
+      x = min(bond(1), bond(3))
+      y = bond(2)
+      z = max(bond(1), bond(3))
       b1 = a(ma-5)
       b2 = a(ma-4)
       b3 = a(ma-3)

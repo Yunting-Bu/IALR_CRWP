@@ -1,15 +1,22 @@
-! Input file for DCS and ICS
+! Input file for DCS, ICS and rate
 
 &stateInfo
-    ichnl          = 1                          ! 1 for C+AB, 2 for B+AC
+    ichnl          = 0                          ! 1 for C+AB, 2 for B+AC
     v0                 = 4                          ! Initial vibrational quantum number
     j0                 = 0                          ! Initial rotational quantum number
-    l0                = 0                          ! Initial orbital angular momentum quantum number
     iPES               = 1                          ! PES index for DCS and ICS calculation
-    nJtot               = 0                          ! Total angular momentum
+    JtotMax               = 0                          ! Total angular momentum
     nEtot               = 100                          ! Total energy
-    vf                 = 3                          ! Final vibrational quantum number
-    jf                 = 10                          ! Final rotational quantum number
+    nTemp             = 100                          ! Number of temperature for rate calculation
+    tempRange           = 0.001, 100.0                      ! Temperature for rate calculation
+    nFinal             = 1                          ! Number of final states
+    vf                 = 3                    ! Final vibrational quantum numbers
+    jf                 = 2                    ! Final rotational quantum numbers
     SmatDir             = 'H3_DCS'                 ! Directory for S-matrix
+    doAmplitude         = .false.                    ! Compute scattering amplitude
+    doDCS               = .false.                    ! Compute differential cross section
+    doProb              = .true.                    ! Compute reaction probability
+    doICS               = .true.                    ! Compute integral cross section
+    doRate              = .false.                    ! Compute thermal rate constant
 /
 
